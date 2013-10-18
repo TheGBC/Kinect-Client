@@ -18,13 +18,6 @@ namespace Kinectv1 {
     private bool frameReady = true;
     private object frameLock = new object();
 
-    // Width and Height of frame
-    private readonly int WIDTH = 640;
-    private readonly int HEIGHT = 480;
-
-    private readonly int DEPTH_WIDTH = 320;
-    private readonly int DEPTH_HEIGHT = 240;
-
     // Formats for Depth and Color
     private readonly DepthImageFormat DEPTH_FORMAT = DepthImageFormat.Resolution320x240Fps30;
     private readonly ColorImageFormat COLOR_FORMAT = ColorImageFormat.RgbResolution640x480Fps30;
