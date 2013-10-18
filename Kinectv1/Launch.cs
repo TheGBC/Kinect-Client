@@ -10,6 +10,9 @@ namespace Kinectv1 {
       wait();
     }
 
+    /// <summary>
+    /// Blocks the program from closing
+    /// </summary>
     static void wait() {
       while (true) ;
     }
