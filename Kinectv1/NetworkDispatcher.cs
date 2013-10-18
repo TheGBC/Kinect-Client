@@ -11,8 +11,6 @@ namespace Kinectv1 {
   /// Utility class for making network requests
   /// </summary>
   class NetworkDispatcher {
-    public static readonly string URL = "http://domain.com/page.aspx";
-
     private NetworkDispatcher() { }
 
     /// <summary>
@@ -21,18 +19,11 @@ namespace Kinectv1 {
     /// <param name="reqParams">Map of key to value params to attach to the request</param>
     /// <param name="url">The request url</param>
     /// <returns></returns>
-    public static string syncGet(Dictionary<string, string> reqParams, string url) {
+    public static string SynchronizedGet(Dictionary<string, string> reqParams, string url) {
       string getUrl = url;
       // Buid the param string
       if (reqParams != null) {
-        string paramData = "";
-        foreach (KeyValuePair<string, string> entry in reqParams) {
-          if (!paramData.Equals("")) {
-            paramData += '&';
-          }
-          paramData += entry.Key + '=' + entry.Value;
-        }
-        getUrl += "?" + paramData;
+        getUrl += "?" + paramString(reqParams);
       }
       // Make the get request
       HttpWebRequest httpWReq = (HttpWebRequest)WebRequest.Create(getUrl);
@@ -47,19 +38,10 @@ namespace Kinectv1 {
     /// <param name="reqParams">Map of key to value params to attach to the request</param>
     /// <param name="url">The request url</param>
     /// <returns></returns>
-    public static string syncPost(Dictionary<string, string> reqParams, string url) {
+    public static string SynchronizedPost(Dictionary<string, string> reqParams, string url) {
       HttpWebRequest httpWReq = (HttpWebRequest)WebRequest.Create(url);
       ASCIIEncoding encoding = new ASCIIEncoding();
-      // Build the param string
-      string postData = "";
-      if (reqParams != null) {
-        foreach (KeyValuePair<string, string> entry in reqParams) {
-          if (!postData.Equals("")) {
-            postData += '&';
-          }
-          postData += entry.Key + '=' + entry.Value;
-        }
-      }
+      string postData = paramString(reqParams);
       byte[] data = encoding.GetBytes(postData);
       httpWReq.Method = "POST";
       httpWReq.ContentType = "application/x-www-form-urlencoded";
@@ -73,6 +55,21 @@ namespace Kinectv1 {
       // Get the response
       HttpWebResponse response = (HttpWebResponse)httpWReq.GetResponse();
       return new StreamReader(response.GetResponseStream()).ReadToEnd();
+    }
+
+    // Builds the param string
+    private static string paramString(Dictionary<string, string> reqParams) {
+      string paramString = "";
+      if (reqParams == null) {
+        return paramString;
+      }
+      foreach (KeyValuePair<string, string> entry in reqParams) {
+        if (!paramString.Equals("")) {
+          paramString += '&';
+        }
+        paramString += entry.Key + '=' + entry.Value;
+      }
+      return paramString;
     }
   }
 }

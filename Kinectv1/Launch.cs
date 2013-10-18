@@ -7,13 +7,13 @@ using System.Threading.Tasks;
 namespace Kinectv1 {
   class Launch {
     static void Main(string[] args) {
-      wait();
+      Wait();
     }
 
     /// <summary>
     /// Blocks the program from closing
     /// </summary>
-    static void wait() {
+    static void Wait() {
       while (true) ;
     }
   }
