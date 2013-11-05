@@ -30,10 +30,8 @@ namespace Kinectv1 {
         string data = manager.SerializeCurrentFrame();
         if (data != null) {
           map["pointCloud"] = data;
-          map["pointCloudWidth"] = "320";
-          map["pointCloudHeight"] = "240";
-          NetworkDispatcher.SynchronizedPost(map, "");
-          Console.WriteLine("Sent frame");
+          string resp = NetworkDispatcher.SynchronizedPost(map, "");
+          Console.WriteLine(resp);
         }
       }
     }
