@@ -24,12 +24,14 @@ namespace Kinectv1 {
     static void Run() {
       KinectManager manager = new KinectManager();
       Dictionary<string, string> map = new Dictionary<string,string>();
-      map["id"] = id;
+      map["kinectID"] = id;
       while (true) {
         Thread.Sleep(1000);
         string data = manager.SerializeCurrentFrame();
         if (data != null) {
-          map["data"] = data;
+          map["pointCloud"] = data;
+          map["pointCloudWidth"] = "320";
+          map["pointCloudHeight"] = "240";
           NetworkDispatcher.SynchronizedPost(map, "");
           Console.WriteLine("Sent frame");
         }
