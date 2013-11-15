@@ -19,7 +19,7 @@ namespace Kinectv1 {
     private object frameLock = new object();
 
     // Formats for Depth and Color
-    private readonly DepthImageFormat DEPTH_FORMAT = DepthImageFormat.Resolution320x240Fps30;
+    private readonly DepthImageFormat DEPTH_FORMAT = DepthImageFormat.Resolution80x60Fps30;
     private readonly ColorImageFormat COLOR_FORMAT = ColorImageFormat.RgbResolution640x480Fps30;
 
     private List<Point3D> points = new List<Point3D>();
@@ -33,6 +33,7 @@ namespace Kinectv1 {
       }
 
       if (sensor == null) {
+        Console.WriteLine("Can't find Kinect Sensor");
         return;
       }
       mapper = new CoordinateMapper(sensor);
@@ -41,6 +42,7 @@ namespace Kinectv1 {
       sensor.ColorStream.Enable(COLOR_FORMAT);
 
       sensor.AllFramesReady += onFrameReady;
+      sensor.Start();
     }
 
     /// <summary>
@@ -48,21 +50,26 @@ namespace Kinectv1 {
     /// </summary>
     /// <returns>json array serialized as a string, or null if current frame is empty</returns>
     public string SerializeCurrentFrame() {
-      string str = "[";
+      StringBuilder builder = new StringBuilder();
       Monitor.Enter(frameLock);
       if (points.Count == 0) {
         return null;
       }
-
+      builder.Append('[');
+      int pointCnt = 0;
       foreach (Point3D point in points) {
-        if (str.Length > 1) {
-          str += ',';
+        if (pointCnt++ > 0) {
+          builder.Append(',');
         }
-        str += point.X + ',' + point.Y + ',' + point.Z;
+        builder.Append(point.X);
+        builder.Append(',');
+        builder.Append(point.Y);
+        builder.Append(',');
+        builder.Append(point.Z);
       }
-      str += ']';
-      Monitor.Enter(frameLock);
-      return str;
+      builder.Append(']');
+      Monitor.Exit(frameLock);
+      return builder.ToString();
     }
 
     /// <summary>
@@ -110,7 +117,7 @@ namespace Kinectv1 {
 
           // Select the points that are within range and add them to coordinates
           for (int i = 0; i < realPoints.Length; i++) {
-            if (depth[i].Depth >= depthFrame.MaxDepth || depth[i].Depth <= depthFrame.MinDepth) {
+            if (depth[i].Depth >= 1800 || depth[i].Depth <= depthFrame.MinDepth) {
               continue;
             }
 

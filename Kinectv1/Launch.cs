@@ -7,10 +7,13 @@ using System.Threading.Tasks;
 
 namespace Kinectv1 {
   class Launch {
+    static KinectManager manager;
     static string id = "1";
     static void Main(string[] args) {
-      Thread thread = new Thread(Run);
-      thread.Start();
+      Thread kinectThread = new Thread(KinectRun);
+      Thread netThread = new Thread(NetworkRun);
+      kinectThread.Start();
+      netThread.Start();
       Wait();
     }
 
@@ -21,17 +24,29 @@ namespace Kinectv1 {
       while (true) ;
     }
 
-    static void Run() {
-      KinectManager manager = new KinectManager();
+    static void KinectRun() {
+      manager = new KinectManager();
+    }
+
+    static void NetworkRun() {
       Dictionary<string, string> map = new Dictionary<string,string>();
       map["kinectID"] = id;
       while (true) {
         Thread.Sleep(1000);
+        if (manager == null) {
+          continue;
+        }
         string data = manager.SerializeCurrentFrame();
         if (data != null) {
+          Console.WriteLine(data.Substring(0, 200));
           map["pointCloud"] = data;
-          string resp = NetworkDispatcher.SynchronizedPost(map, "");
+          Console.WriteLine("Sending");
+          int t = Environment.TickCount;
+          string resp = NetworkDispatcher.SynchronizedPost(map, "http://54.200.15.13:8080/ICP/post");
           Console.WriteLine(resp);
+          Console.WriteLine(Environment.TickCount - t);
+        } else {
+          Console.WriteLine("NULL");
         }
       }
     }
