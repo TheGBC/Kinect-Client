@@ -10,10 +10,9 @@ namespace Kinectv1 {
     static KinectManager manager;
     static string id = "1";
     static void Main(string[] args) {
-      Thread kinectThread = new Thread(KinectRun);
-      Thread netThread = new Thread(NetworkRun);
-      kinectThread.Start();
-      netThread.Start();
+      manager = new KinectManager("out.txt");
+      Thread networkThread = new Thread(NetworkRun);
+      networkThread.Start();
       Wait();
     }
 
@@ -24,27 +23,22 @@ namespace Kinectv1 {
       while (true) ;
     }
 
-    static void KinectRun() {
-      manager = new KinectManager();
-    }
-
     static void NetworkRun() {
       Dictionary<string, string> map = new Dictionary<string,string>();
       map["kinectID"] = id;
+      map["reqType"] = "SET_MATRIX";
+      Thread.Sleep(5000);
       while (true) {
         Thread.Sleep(1000);
         if (manager == null) {
           continue;
         }
-        string data = manager.SerializeCurrentFrame();
+        string data = manager.SerializeCurrentTransformation();
         if (data != null) {
-          Console.WriteLine(data.Substring(0, 200));
-          map["pointCloud"] = data;
-          Console.WriteLine("Sending");
-          int t = Environment.TickCount;
+          map["matrix"] = data;
+          Console.WriteLine(data);
           string resp = NetworkDispatcher.SynchronizedPost(map, "http://54.200.15.13:8080/ICP/post");
           Console.WriteLine(resp);
-          Console.WriteLine(Environment.TickCount - t);
         } else {
           Console.WriteLine("NULL");
         }
