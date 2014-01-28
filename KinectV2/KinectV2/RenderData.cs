@@ -8,7 +8,7 @@ using System.Text;
 
 namespace KinectV2 {
   class RenderData {
-    private Matrix Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(43), 53f / 43f, .4f, 8f);
+    private Matrix Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(43), 57f / 43f, .4f, 8f);
     private Matrix PreOffset = Matrix.CreateTranslation(0, 0, 1);
 
     // Offset of map I used

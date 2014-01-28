@@ -115,6 +115,7 @@
     <Compile Include="Program.cs" />
     <Compile Include="Game1.cs" />
     <Compile Include="RenderData.cs" />
+    <Compile Include="RenderOcclusion.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Game.ico" />

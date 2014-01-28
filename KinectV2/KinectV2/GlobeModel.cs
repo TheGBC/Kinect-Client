@@ -11,8 +11,9 @@ namespace KinectV2 {
     private Model globe;
     private Model chair;
     private RenderData data;
+    private RenderOcclusion occlusion;
 
-    private Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(43), 53f / 43f, .4f, 8f);
+    private Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(43), 57f / 43f, .4f, 8f);
     private Matrix offset = Matrix.Identity;
 
     private float yRotation = 0;
@@ -29,13 +30,14 @@ namespace KinectV2 {
       globe = content.Load<Model>("globe");
       globeTransforms = new Matrix[globe.Bones.Count];
       globe.CopyAbsoluteBoneTransformsTo(globeTransforms);
-
+      Console.WriteLine(globeTransforms[1]);
       //chair = content.Load<Model>("model2");
       chair = content.Load<Model>("chair");
       chairTransforms = new Matrix[chair.Bones.Count];
       chair.CopyAbsoluteBoneTransformsTo(chairTransforms);
 
       data = new RenderData(content, GraphicsDevice);
+      occlusion = new RenderOcclusion(content, GraphicsDevice);
 
       // If there is an offset, set the offset
       if (offset.HasValue) {
@@ -43,6 +45,10 @@ namespace KinectV2 {
       }
 
       data.setOffset(globeTransforms[1] * this.offset);
+    }
+
+    public void newDepth(float[] depths) {
+      occlusion.updateInstanceInformation(depths);
     }
 
     public void update(int millis) {
@@ -72,11 +78,15 @@ namespace KinectV2 {
       data.toggleTile();
     }
 
+    public void updateOcclusion(float[] data) {
+      occlusion.updateInstanceInformation(data);
+    }
+
     public void setData(DataPoint[] dataPoints) {
       data.setData(dataPoints);
     }
 
-    public void render(Matrix cameraPosition) {
+    public void render(Matrix cameraPosition, GraphicsDevice GraphicsDevice) {
       // First draw the chair, if we want to see it, set the transparency to half, if not, set to 0
       // drawModel(chair, chairTransforms, Matrix.Identity, offset, cameraPosition, drawChair ? .5f : 0);
 
@@ -84,6 +94,9 @@ namespace KinectV2 {
       if (drawOverlay) {
         // Get the rotation matrix
         Matrix r = Matrix.CreateRotationY(yRotation);
+        occlusion.draw();
+
+        GraphicsDevice.BlendState = BlendState.Opaque;
         data.draw();
 
         // Finally, draw the globe,

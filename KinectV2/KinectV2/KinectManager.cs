@@ -33,6 +33,7 @@ namespace KinectV2 {
     private object matrixLock = new object();
     private object outPixelLock = new object();
     private object colorPointLock = new object();
+    private object pointCloudLock = new object();
 
     // Formats for Depth and Color
     private readonly DepthImageFormat DEPTH_FORMAT = DepthImageFormat.Resolution640x480Fps30;
@@ -80,6 +81,8 @@ namespace KinectV2 {
     // Depth to Color mapping, aligns color image to depth image so the marker and overlay align better
     private ColorImagePoint[] points = new ColorImagePoint[640 * 480];
     private CoordinateMapper mapper;
+
+    private float[] pointCloud = new float[640 * 480 * 6];
 
     public KinectManager(string modelData) {
       // Read in the pose finder
@@ -147,12 +150,28 @@ namespace KinectV2 {
         // Enter into a monitor to check copy the data from outColor
         Monitor.Enter(outPixelLock);
         if (outColor != null) {
-          data = new byte[outColor.Length];
-          for (int i = 0; i < outColor.Length; i++) {
-            data[i] = outColor[i];
+          // position x, y, z, and normal x, y, z
+          // we only want position z
+          data = new byte[outColor.Length / 6];
+          for (int i = 0; i < data.Length; i++) {
+            // offset 2, every 6 floats
+            data[i] = outColor[2 + i * 6];
           }
         }
         Monitor.Exit(outPixelLock);
+        return data;
+      }
+    }
+
+    public float[] PointCloudData {
+      get {
+        float[] data = null;
+        Monitor.Enter(pointCloudLock);
+        data = new float[pointCloud.Length];
+        for (int i = 0; i < pointCloud.Length; i++) {
+          data[i] = pointCloud[i] == 0 ? 8 : pointCloud[i];
+        }
+        Monitor.Exit(pointCloudLock);
         return data;
       }
     }
@@ -312,6 +331,7 @@ namespace KinectV2 {
 
           // Calculate point cloud
           FusionDepthProcessor.DepthFloatFrameToPointCloud(smoothDepthFloatFrame, observedPointCloud);
+          observedPointCloud.CopyPixelDataTo(pointCloud);
 
           // Get the current camera pose and calculate the point cloud (view of pre scanned model) from it
           Matrix4 t = currentMatrix;

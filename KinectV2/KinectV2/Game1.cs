@@ -84,7 +84,7 @@ namespace KinectV2 {
 
       //manager = new KinectManager("out.txt");
     }
-
+    
     /// <summary>
     /// UnloadContent will be called once per game and is the place to unload
     /// all content.
@@ -116,9 +116,9 @@ namespace KinectV2 {
         } else if (key == Keys.D4) {
           offsetY -= .01f;
         } else if (key == Keys.D5) {
-          offsetZ += .1f;
+          offsetZ += .01f;
         } else if (key == Keys.D6) {
-          offsetZ -= .1f;
+          offsetZ -= .01f;
         } else if (key == Keys.Space) {
           Console.WriteLine(offsetX + " " + offsetY + " " + offsetZ);
         }
@@ -186,7 +186,9 @@ namespace KinectV2 {
       */
       // Render with the new transform
       //model.render(GraphicsDevice, transform);
-      model.render(Matrix.Identity);
+      GraphicsDevice.BlendState = BlendState.AlphaBlend;
+      model.updateOcclusion(new float[640 * 480]);
+      model.render(Matrix.Identity, GraphicsDevice);
       base.Draw(gameTime);
     }
 
