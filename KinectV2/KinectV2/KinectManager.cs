@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Speech.AudioFormat;
+using System.Speech.Recognition;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,13 +15,13 @@ namespace KinectV2 {
   /// <summary>
   /// Manager for grabbing point clouds
   /// </summary>
-  class KinectManager {
+  public class KinectManager {
     // Constants for the reconstruction volume
-    private readonly int VOXEL_RESOLUTION = 256;
-    //private readonly int VOXEL_RESOLUTION = 384; // in voxels/meter
+    //private readonly int VOXEL_RESOLUTION = 256;
+    private readonly int VOXEL_RESOLUTION = 384; // in voxels/meter
     private readonly int X_VOXELS = 256; // in voxels
-    private readonly int Y_VOXELS = 384;
-    //private readonly int Y_VOXELS = 256; // in voxels
+    //private readonly int Y_VOXELS = 384;
+    private readonly int Y_VOXELS = 256; // in voxels
     private readonly int Z_VOXELS = 256; // in voxels
 
     // Kinect sensor
@@ -41,9 +43,13 @@ namespace KinectV2 {
 
     // Reconstruction volume to hold prescanned model
     private ColorReconstruction volume;
+    private ColorReconstruction continueVolume;
+    private bool continuousTrack = false;
 
     // The current camera pose / guess for next frame's pose
     private Matrix4 currentMatrix = Matrix4.Identity;
+    private Matrix4 initAlign = Matrix4.Identity;
+    private bool hasInitAlign = false;
 
     // Camera pose and alignment energy (how much error there is based on the pose)
     // Not used
@@ -82,11 +88,15 @@ namespace KinectV2 {
     private ColorImagePoint[] points = new ColorImagePoint[640 * 480];
     private CoordinateMapper mapper;
 
-    private float[] pointCloud = new float[640 * 480 * 6];
+    private float[] pointCloud = new float[640 * 480];
 
-    public KinectManager(string modelData) {
+    private bool running = true;
+
+    public KinectManager(string modelData, bool continuousTrack) {
       // Read in the pose finder
       poseFinder.LoadCameraPoseFinderDatabase("poseFinder.txt");
+
+      this.continuousTrack = continuousTrack;
 
       // Read in the model reconstruction (prescanned model)
       FileStream stream = System.IO.File.OpenRead(modelData);
@@ -116,6 +126,10 @@ namespace KinectV2 {
       volume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
       volume.ImportVolumeBlock(modelVolumeData);
 
+      if (continuousTrack) {
+        continueVolume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
+      }
+
       // Find a kinect
       foreach (KinectSensor potentialSensor in KinectSensor.KinectSensors) {
         if (potentialSensor.Status == KinectStatus.Connected && !potentialSensor.IsRunning) {
@@ -143,6 +157,10 @@ namespace KinectV2 {
       new Thread(new ThreadStart(runColor)).Start();
     }
 
+    public void toggleRun() {
+      running = !running;
+    }
+
     // Gets camera data
     public byte[] ImageData {
       get {
@@ -150,12 +168,9 @@ namespace KinectV2 {
         // Enter into a monitor to check copy the data from outColor
         Monitor.Enter(outPixelLock);
         if (outColor != null) {
-          // position x, y, z, and normal x, y, z
-          // we only want position z
-          data = new byte[outColor.Length / 6];
+          data = new byte[outColor.Length];
           for (int i = 0; i < data.Length; i++) {
-            // offset 2, every 6 floats
-            data[i] = outColor[2 + i * 6];
+            data[i] = outColor[i];
           }
         }
         Monitor.Exit(outPixelLock);
@@ -168,8 +183,8 @@ namespace KinectV2 {
         float[] data = null;
         Monitor.Enter(pointCloudLock);
         data = new float[pointCloud.Length];
-        for (int i = 0; i < pointCloud.Length; i++) {
-          data[i] = pointCloud[i] == 0 ? 8 : pointCloud[i];
+        for (int i = 0; i < data.Length; i++) {
+          data[i] = pointCloud[i] == 0 ? 8f : pointCloud[i];
         }
         Monitor.Exit(pointCloudLock);
         return data;
@@ -215,18 +230,14 @@ namespace KinectV2 {
       // Then, enter into a colorLock context to set the pending frame to be parsed next
       // If this is called multiple times before the frame is parsed, the pending frame is overwritten
       // meaning that non current frames are dropped
-      if (colorReady) {
-        Monitor.Enter(colorLock);
-        colorReady = false;
-        this.ce = e;
-        colorReady = true;
-        Monitor.Exit(colorLock);
-      }
+      this.ce = e;
     }
 
     public void retry() {
       // Reset the current pose to identity and start over
       this.currentMatrix = Matrix4.Identity;
+      this.initAlign = Matrix4.Identity;
+      this.hasInitAlign = false;
     }
 
     private void runColor() {
@@ -300,7 +311,7 @@ namespace KinectV2 {
     }
 
     private void doDepthFrameReady(DepthImageFrameReadyEventArgs readyFrame) {
-      if (depthReady) {
+      if (depthReady && running) {
         Monitor.Enter(depthLock);
         // Enter a context with both the depth and color frames
         using (DepthImageFrame depthFrame = readyFrame.OpenDepthImageFrame()) {
@@ -328,30 +339,43 @@ namespace KinectV2 {
           // Construct into a fusionfloatimageframe
           FusionDepthProcessor.DepthToDepthFloatFrame(depth, 640, 480, frame, FusionDepthProcessor.DefaultMinimumDepth, FusionDepthProcessor.DefaultMaximumDepth, false);
           this.volume.SmoothDepthFloatFrame(frame, smoothDepthFloatFrame, 1, .04f);
+          smoothDepthFloatFrame.CopyPixelDataTo(pointCloud);
 
-          // Calculate point cloud
-          FusionDepthProcessor.DepthFloatFrameToPointCloud(smoothDepthFloatFrame, observedPointCloud);
-          observedPointCloud.CopyPixelDataTo(pointCloud);
 
-          // Get the current camera pose and calculate the point cloud (view of pre scanned model) from it
-          Matrix4 t = currentMatrix;
-          volume.CalculatePointCloud(imgFrame, t);
-
-          // Try to align our two point clouds, with t containing the new camera pose if successful
-          bool success = FusionDepthProcessor.AlignPointClouds(imgFrame, observedPointCloud, 10, null, ref t);
-          if (success) {
-            // If successful, set the current matrix to our new camera pose
+          if (continuousTrack && hasInitAlign) {
+            continueVolume.IntegrateFrame(smoothDepthFloatFrame, 10, currentMatrix);
+            Matrix4 t = toMatrix4(Matrix.Multiply(toMatrix(initAlign), toMatrix(continueVolume.GetCurrentWorldToCameraTransform())));
             Monitor.Enter(matrixLock);
-            this.currentMatrix = t;
+            currentMatrix = t;
             Monitor.Exit(matrixLock);
+          } else {
+            // Calculate point cloud
+            FusionDepthProcessor.DepthFloatFrameToPointCloud(smoothDepthFloatFrame, observedPointCloud);
+
+            // Get the current camera pose and calculate the point cloud (view of pre scanned model) from it
+            Matrix4 t = currentMatrix;
+            volume.CalculatePointCloud(imgFrame, t);
+
+            // Try to align our two point clouds, with t containing the new camera pose if successful
+            bool success = FusionDepthProcessor.AlignPointClouds(imgFrame, observedPointCloud, 10, null, ref t);
+            if (success) {
+              // If successful, set the current matrix to our new camera pose
+              Monitor.Enter(matrixLock);
+              this.currentMatrix = t;
+              if (continuousTrack) {
+                hasInitAlign = true;
+                this.initAlign = t;
+              }
+              Monitor.Exit(matrixLock);
+            }
           }
           
           // Log out the current matrix
-          Console.WriteLine(success);
-          Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M11, currentMatrix.M12, currentMatrix.M13, currentMatrix.M14);
-          Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M21, currentMatrix.M22, currentMatrix.M23, currentMatrix.M24);
-          Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M31, currentMatrix.M32, currentMatrix.M33, currentMatrix.M34);
-          Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M41, currentMatrix.M42, currentMatrix.M43, currentMatrix.M44);
+          //Console.WriteLine(success);
+          //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M11, currentMatrix.M12, currentMatrix.M13, currentMatrix.M14);
+          //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M21, currentMatrix.M22, currentMatrix.M23, currentMatrix.M24);
+          //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M31, currentMatrix.M32, currentMatrix.M33, currentMatrix.M34);
+          //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M41, currentMatrix.M42, currentMatrix.M43, currentMatrix.M44);
           
           // Release resources, now ready for next callback
           depthReady = true;
@@ -360,17 +384,46 @@ namespace KinectV2 {
       }
     }
 
+    public void stop() {
+      sensor.Stop();
+    }
+
+    private Matrix toMatrix(Matrix4 m) {
+      return new Matrix(
+        m.M11, m.M12, m.M13, m.M14,
+        m.M21, m.M22, m.M23, m.M24,
+        m.M31, m.M32, m.M33, m.M34,
+        m.M41, m.M42, m.M43, m.M44);
+    }
+
+    private Matrix4 toMatrix4(Matrix m) {
+      Matrix4 t = new Matrix4();
+      t.M11 = m.M11;
+      t.M12 = m.M12;
+      t.M13 = m.M13;
+      t.M14 = m.M14;
+
+      t.M21 = m.M21;
+      t.M22 = m.M22;
+      t.M23 = m.M23;
+      t.M24 = m.M24;
+
+      t.M31 = m.M31;
+      t.M32 = m.M32;
+      t.M33 = m.M33;
+      t.M34 = m.M34;
+
+      t.M41 = m.M41;
+      t.M42 = m.M42;
+      t.M43 = m.M43;
+      t.M44 = m.M44;
+
+      return t;
+    }
+
     // When both color and depth frames are ready
     private void depthFrameReady(object sender, DepthImageFrameReadyEventArgs e) {
-      // Only get the frames when we're done processing the previous one, to prevent
-      // frame callbacks from piling up
-      if (depthReady) {
-        Monitor.Enter(depthLock);
-        depthReady = false;
-        this.de = e;
-        depthReady = true;
-        Monitor.Exit(depthLock);
-      }
+      this.de = e;
     }
 
     // Not used

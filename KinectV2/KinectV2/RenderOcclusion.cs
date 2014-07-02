@@ -10,7 +10,7 @@ namespace KinectV2 {
   class RenderOcclusion {
     private readonly int WIDTH = 640;
     private readonly int HEIGHT = 480;
-    private readonly Matrix VP = Matrix.CreatePerspective(640, 480, .4f, 8f);
+    private readonly Matrix VP = Matrix.CreatePerspective(640, 480, .01f, 8f);
 
     private VertexBuffer geometryBuffer;
     private VertexBuffer instanceBuffer;
@@ -77,9 +77,9 @@ namespace KinectV2 {
       instances = new InstanceInfo[WIDTH * HEIGHT];
       for (int y = 0; y < HEIGHT; y++ ) {
         for (int x = 0; x < WIDTH; x++) {
-          float scale = 4f / .4f;
+          float scale = 4f / .01f;
           instances[y * WIDTH + x].World = Matrix.CreateTranslation(x - (WIDTH / 2), y - (HEIGHT / 2), 0)
-              * Matrix.CreateScale(scale) * Matrix.CreateTranslation(0, 0, -8f);
+              * Matrix.CreateScale(scale) * Matrix.CreateTranslation(0, 0, -4f);
         }
       }
       instanceBuffer = new VertexBuffer(device, instanceVertexDeclaration, instances.Length, BufferUsage.WriteOnly);
@@ -90,7 +90,7 @@ namespace KinectV2 {
       for (int y = 0; y < HEIGHT; y++) {
         for (int x = 0; x < WIDTH; x++) {
           int i = y * WIDTH + x;
-          float scale = values[i]/ .4f;
+          float scale = values[i]/ .01f;
           // We don't need to multiply new matrices and slow it down
           // scale   0       0     0
           // 0       scale   0     0
@@ -100,8 +100,8 @@ namespace KinectV2 {
           instances[i].World.M22 = scale;
           instances[i].World.M33 = scale;
           instances[i].World.M41 = scale * (x - (WIDTH / 2));
-          instances[i].World.M42 = scale * (y - (HEIGHT / 2));
-          instances[i].World.M43 = -scale;
+          instances[i].World.M42 = scale * -(y - (HEIGHT / 2));
+          instances[i].World.M43 = -values[i];
         }
       }
       instanceBuffer.SetData(instances);

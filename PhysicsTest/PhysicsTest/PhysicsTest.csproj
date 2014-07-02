@@ -1,20 +1,20 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
-    <ProjectGuid>{F8F1EE56-A013-4A6C-8232-A0FA2F15630F}</ProjectGuid>
+    <ProjectGuid>{4E136922-94E9-4FF8-8435-59140FAA8A42}</ProjectGuid>
     <ProjectTypeGuids>{6D335F3A-9D43-41b4-9D22-F6F17C4BE596};{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}</ProjectTypeGuids>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">x86</Platform>
     <OutputType>WinExe</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>KinectV2</RootNamespace>
-    <AssemblyName>KinectV2</AssemblyName>
+    <RootNamespace>PhysicsTest</RootNamespace>
+    <AssemblyName>PhysicsTest</AssemblyName>
     <TargetFrameworkVersion>v4.0</TargetFrameworkVersion>
     <TargetFrameworkProfile>Client</TargetFrameworkProfile>
     <XnaFrameworkVersion>v4.0</XnaFrameworkVersion>
     <XnaPlatform>Windows</XnaPlatform>
     <XnaProfile>HiDef</XnaProfile>
-    <XnaCrossPlatformGroupID>d94bada7-ef20-4b3c-a89e-ab68c64805f1</XnaCrossPlatformGroupID>
+    <XnaCrossPlatformGroupID>7ff7ef69-bdec-4afd-9bea-e969753e22ec</XnaCrossPlatformGroupID>
     <XnaOutputType>Game</XnaOutputType>
     <ApplicationIcon>Game.ico</ApplicationIcon>
     <Thumbnail>GameThumbnail.png</Thumbnail>
@@ -60,7 +60,6 @@
     <XnaCompressContent>true</XnaCompressContent>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Microsoft.Kinect, Version=1.8.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL" />
     <Reference Include="Microsoft.Xna.Framework, Version=4.0.0.0, Culture=neutral, PublicKeyToken=842cf8be1de50553, processorArchitecture=x86">
       <Private>False</Private>
     </Reference>
@@ -94,8 +93,6 @@
     <Reference Include="System">
       <Private>False</Private>
     </Reference>
-    <Reference Include="System.Runtime.Serialization" />
-    <Reference Include="System.Speech" />
     <Reference Include="System.Xml">
       <Private>False</Private>
     </Reference>
@@ -110,30 +107,16 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="DataPoint.cs" />
-    <Compile Include="GlobeModel.cs" />
-    <Compile Include="KinectManager.cs" />
-    <Compile Include="Location.cs" />
-    <Compile Include="NetworkDispatcher.cs" />
-    <Compile Include="NumberParser.cs" />
+    <Compile Include="Body.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Game1.cs" />
-    <Compile Include="RenderData.cs" />
-    <Compile Include="RenderOcclusion.cs" />
-    <Compile Include="LocationSocket.cs" />
-    <Compile Include="Speech.cs" />
-    <Compile Include="VisualHelper.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Game.ico" />
     <Content Include="GameThumbnail.png" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\..\..\..\..\..\..\..\Program Files\Microsoft SDKs\Kinect\Developer Toolkit v1.8.0\Samples\C#\Microsoft.Kinect.Toolkit.Fusion\Microsoft.Kinect.Toolkit.Fusion.csproj">
-      <Project>{58851747-f078-44e1-94b0-99ef065b3319}</Project>
-      <Name>Microsoft.Kinect.Toolkit.Fusion</Name>
-    </ProjectReference>
     <ProjectReference Include="..\..\..\..\..\..\Downloads\Henge3D_201011\Physics\Physics.csproj">
       <Project>{888dc669-1e80-4afd-895b-4b6a0751a07c}</Project>
       <Name>Physics</Name>
@@ -142,8 +125,8 @@
       <Project>{3086e95c-5a76-4e06-a494-f61c2b71fea2}</Project>
       <Name>Pipeline</Name>
     </ProjectReference>
-    <ProjectReference Include="..\KinectV2Content\KinectV2Content.contentproj">
-      <Name>KinectV2Content</Name>
+    <ProjectReference Include="..\PhysicsTestContent\PhysicsTestContent.contentproj">
+      <Name>PhysicsTestContent</Name>
       <XnaReferenceType>Content</XnaReferenceType>
     </ProjectReference>
   </ItemGroup>

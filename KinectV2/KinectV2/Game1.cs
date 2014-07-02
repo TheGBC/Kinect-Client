@@ -18,14 +18,20 @@ namespace KinectV2 {
     GraphicsDeviceManager graphics;
     SpriteBatch spriteBatch;
     Texture2D cameraFeed;
-    //KinectManager manager;
+    KinectManager manager;
     KeyboardState prevState;
     float aspectRatio;
 
     // Empirically gathered offset
-    float offsetX = 0.01f;
-    float offsetY = 0;
+    //float offsetX = 0.01f;
+    //float offsetY = 0;
+    //float offsetZ = 0.35f;
+    float offsetX = 0f;
+    float offsetY = -0.01f;
     float offsetZ = 0.35f;
+
+    bool ENABLE_KINECT = true;
+    bool CONTINUE_TRACK = false;
 
     GlobeModel model;
 
@@ -57,32 +63,44 @@ namespace KinectV2 {
       spriteBatch = new SpriteBatch(GraphicsDevice);
 
       // Create a new model
-      model = new GlobeModel(Content, GraphicsDevice, Matrix.CreateTranslation(offsetX, offsetY, offsetZ));
-      // Get a list of data points from the file
-      List<DataPoint> dataPoints = new List<DataPoint>();
-      string line;
-      StreamReader file = new StreamReader("earthquake.tsv");
-      while ((line = file.ReadLine()) != null) {
-        string[] parts = line.Split(' ');
-        dataPoints.Add(new DataPoint(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2]) / 9.5f));
+      DataPoint[] data = new DataPoint[360 * 180];
+      for (int lng = 0; lng < 360; lng ++) {
+        for (int lat = 0; lat < 180; lat ++) {
+          int ind = lng * 180 + lat;
+          data[ind] = new DataPoint(lat - 90, lng - 180, 0);
+        }
       }
-      /*
-      dataPoints.Clear();
-      for (float lng = (float)-180; lng < 180; lng += 5) {
-        float lat = lng / 2;
-        float value = (float) ((lng + 180) / (360f));
-        dataPoints.Add(new DataPoint(lat, lng, value));
-      }*/
-      model.setData(dataPoints.ToArray());
+      List<DataPoint> dataList = new List<DataPoint>();
+
+
+      //model = new GlobeModel(Content, GraphicsDevice, Matrix.CreateTranslation(offsetX, offsetY, offsetZ));
+
+
+      //string line;
+      //StreamReader file = new StreamReader("earthquake.tsv");
+      //while ((line = file.ReadLine()) != null) {
+      //  string[] parts = line.Split(' ');
+      //  int lat = (int)(float.Parse(parts[0]) + .5f);
+      //  int lng = (int)(float.Parse(parts[1]) + .5f);
+      //  int ind = (lng >= 180 ? 0 : lng + 180) * 180 + (lat + 90);
+      //  data[ind].value++;
+      //  dataList.Add(new DataPoint(float.Parse(parts[0]), float.Parse(parts[1]), float.Parse(parts[2]) / 9.5f));
+      //}
+      //dataList.Clear();
+      //dataList.Add(new DataPoint(35.673343f, 139.710388f, 1));
+      //data = dataList.ToArray();
+      //model.setData(data);
 
       aspectRatio = graphics.GraphicsDevice.Viewport.AspectRatio;
 
       // Set cullmode
       RasterizerState rs = new RasterizerState();
-      rs.CullMode = CullMode.None;
+      rs.CullMode = CullMode.CullCounterClockwiseFace;
       GraphicsDevice.RasterizerState = rs;
 
-      //manager = new KinectManager("out.txt");
+      if (ENABLE_KINECT) {
+        manager = new KinectManager("out.txt", CONTINUE_TRACK);
+      }
     }
     
     /// <summary>
@@ -103,7 +121,9 @@ namespace KinectV2 {
 
       // Hold down the enter key to reset the camera pose to identity
       if (Keyboard.GetState().IsKeyDown(Keys.Enter)) {
-        //manager.retry();
+        if (ENABLE_KINECT) {
+          manager.retry();
+        }
       }
 
       foreach (Keys key in Keyboard.GetState().GetPressedKeys()) {
@@ -123,6 +143,11 @@ namespace KinectV2 {
           Console.WriteLine(offsetX + " " + offsetY + " " + offsetZ);
         }
 
+        // 7 key toggles tiles vs bars
+        if (key == Keys.D7 && prevState.IsKeyUp(Keys.D7)) {
+          model.toggleSceneOcclusion();
+        }
+
         // 8 key toggles tiles vs bars
         if (key == Keys.D8 && prevState.IsKeyUp(Keys.D8)) {
           model.toggleTile();
@@ -136,6 +161,14 @@ namespace KinectV2 {
         // 0 key toggles the model
         if (key == Keys.D0 && prevState.IsKeyUp(Keys.D0)) {
           model.toggleOverlayDraw();
+        }
+
+        if (key == Keys.OemMinus && prevState.IsKeyUp(Keys.OemMinus)) {
+          model.toggleRenderOverlay();
+        }
+
+        if (key == Keys.S && prevState.IsKeyUp(Keys.S)) {
+          LocationSocket.start(model);
         }
       }
 
@@ -151,44 +184,48 @@ namespace KinectV2 {
     /// </summary>
     /// <param name="gameTime">Provides a snapshot of timing values.</param>
     protected override void Draw(GameTime gameTime) {
-      GraphicsDevice.Clear(Color.CornflowerBlue);
-      /*
+      GraphicsDevice.Clear(Color.Black);
       // Draw the camera feed
-      spriteBatch.Begin();
-      byte[] imageData = manager.ImageData;
-      if (imageData != null) {
-        texture(640, 480, imageData);
+      //Console.WriteLine(gameTime.ElapsedGameTime.Milliseconds);
+
+      if (ENABLE_KINECT) {
+        spriteBatch.Begin();
+        byte[] imageData = manager.ImageData;
+        if (imageData != null) {
+          texture(640, 480, imageData);
+        }
+        spriteBatch.Draw(cameraFeed, new Rectangle(0, 0, 640, 480), Color.White);
+        spriteBatch.End();
+
+        // Change GraphicsDevice settings to allow for occlusion
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
+        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+
+        // Get camera pose from kinect manager
+        Matrix m = manager.Camera;
+
+        // Decompose into its scale, rotation, and translation components
+        Vector3 s = new Vector3();
+        Quaternion r = new Quaternion();
+        Vector3 t = new Vector3();
+        m.Decompose(out s, out r, out t);
+
+        // Invert the x axis rotation
+        r.X *= -1;
+
+        // Rebuild the transform
+        Matrix transform = Matrix.CreateFromQuaternion(r);
+        transform.M41 = m.M41;
+        transform.M42 = m.M42;
+        transform.M43 = m.M43;
+
+        // Render with the new transform
+        model.updateOcclusion(manager.PointCloudData);
+        model.render(transform, GraphicsDevice);
+      } else {
+        model.render(Matrix.Identity, GraphicsDevice);
       }
-      spriteBatch.Draw(cameraFeed, new Rectangle(0, 0, 640, 480), Color.White);
-      spriteBatch.End();
-
-      // Change GraphicsDevice settings to allow for occlusion
-      GraphicsDevice.BlendState = BlendState.AlphaBlend;
-      GraphicsDevice.DepthStencilState = DepthStencilState.Default;
-
-      // Get camera pose from kinect manager
-      Matrix m = manager.Camera;
-      
-      // Decompose into its scale, rotation, and translation components
-      Vector3 s = new Vector3();
-      Quaternion r = new Quaternion();
-      Vector3 t = new Vector3();
-      m.Decompose(out s, out r, out t);
-
-      // Invert the x axis rotation
-      r.X *= -1;
-
-      // Rebuild the transform
-      Matrix transform = Matrix.CreateFromQuaternion(r);
-      transform.M41 = m.M41;
-      transform.M42 = m.M42;
-      transform.M43 = m.M43;
-      */
-      // Render with the new transform
-      //model.render(GraphicsDevice, transform);
-      GraphicsDevice.BlendState = BlendState.AlphaBlend;
-      model.updateOcclusion(new float[640 * 480]);
-      model.render(Matrix.Identity, GraphicsDevice);
+      //model.render(Matrix.Identity, GraphicsDevice);
       base.Draw(gameTime);
     }
 

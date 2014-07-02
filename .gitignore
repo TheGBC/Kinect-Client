@@ -5,7 +5,7 @@
 *.suo
 *.user
 *.sln.docstates
-KinectV2/KinectV2Content/globe.fbx
+*.fbx
 
 # Build results
 

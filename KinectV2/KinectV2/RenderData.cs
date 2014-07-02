@@ -8,11 +8,11 @@ using System.Text;
 
 namespace KinectV2 {
   class RenderData {
-    private Matrix Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(43), 57f / 43f, .4f, 8f);
+    private Matrix Projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(48.6f), 62f / 48.6f, .01f, 8f);
     private Matrix PreOffset = Matrix.CreateTranslation(0, 0, 1);
+    
+    private readonly Color Invisible = new Color(0, 0, 0, 0);
 
-    // Offset of map I used
-    private readonly float lngOffset = (float)Math.PI * 2 * 850 / 2000f;
     private Matrix View = Matrix.Identity;
     private Effect effect;
     private VertexBuffer geometryBuffer;
@@ -28,7 +28,6 @@ namespace KinectV2 {
     private bool useTile = false;
     private Matrix[] transforms;
     private Matrix Offset = Matrix.Identity;
-    private float Rotation;
 
     public RenderData(ContentManager Content, GraphicsDevice GraphicsDevice) {
       // Load the shader
@@ -44,19 +43,13 @@ namespace KinectV2 {
       for (int i = 0; i < dataPoints.Length; i++) {
         DataPoint point = dataPoints[i];
         transforms[i] = Matrix.CreateScale(1, 1, point.value) * PreOffset
-              * Matrix.CreateRotationX(MathHelper.ToRadians(point.lat))
-              * Matrix.CreateRotationY(-(lngOffset / 2 + MathHelper.ToRadians(point.lng)));
-        colors[i] = hueToColor((1 - point.value) / 2);
+              * VisualHelper.LatLngRotation(point.lat, point.lng);
+        colors[i] = point.value == 0 ? Invisible : VisualHelper.hueToColor((1 - point.value) / 2);
       }
       GenerateInstanceInformation(GraphicsDevice, transforms, colors);
-
       bindings = new VertexBufferBinding[2];
-      bindings[0] = new VertexBufferBinding(geometryBuffer);
+      bindings[0] = new VertexBufferBinding(useTile ? tileGeometryBuffer : geometryBuffer);
       bindings[1] = new VertexBufferBinding(instanceBuffer, 0, 1);
-    }
-
-    public void setRotation(float rotation) {
-      Rotation = rotation;
     }
 
     public void setOffset(Matrix offset) {
@@ -74,12 +67,12 @@ namespace KinectV2 {
       bindings[1] = new VertexBufferBinding(instanceBuffer, 0, 1);
     }
 
-    public void draw() {
+    public void draw(Matrix rotation) {
       if (transforms != null) {
         effect.CurrentTechnique = effect.Techniques["Instancing"];
         effect.Parameters["View"].SetValue(View);
         effect.Parameters["Projection"].SetValue(Projection);
-        effect.Parameters["Rotation"].SetValue(Matrix.CreateRotationY(Rotation));
+        effect.Parameters["Rotation"].SetValue(rotation);
         effect.Parameters["PostWorld"].SetValue(Offset);
         effect.Parameters["PostWorldInverse"].SetValue(Matrix.Invert(Offset));
         GraphicsDevice.Indices = useTile ? tileIndexBuffer : indexBuffer;
@@ -110,35 +103,35 @@ namespace KinectV2 {
 
     private void generateVertexBuffers() {
       VertexPositionColorNormal[] vertices = new VertexPositionColorNormal[24];
-      vertices[0].Position = new Vector3(-.02f, .02f, .5f);
-      vertices[1].Position = new Vector3(-.02f, -.02f, .5f);
-      vertices[2].Position = new Vector3(.02f, .02f, .5f);
-      vertices[3].Position = new Vector3(.02f, -.02f, .5f);
+      vertices[0].Position = new Vector3(-.0025f, .0025f, .5f);
+      vertices[1].Position = new Vector3(-.0025f, -.0025f, .5f);
+      vertices[2].Position = new Vector3(.0025f, .0025f, .5f);
+      vertices[3].Position = new Vector3(.0025f, -.0025f, .5f);
 
-      vertices[4].Position = new Vector3(.02f, .02f, .5f);
-      vertices[5].Position = new Vector3(.02f, -.02f, .5f);
-      vertices[6].Position = new Vector3(.02f, .02f, 0);
-      vertices[7].Position = new Vector3(.02f, -.02f, 0);
+      vertices[4].Position = new Vector3(.0025f, .0025f, .5f);
+      vertices[5].Position = new Vector3(.0025f, -.0025f, .5f);
+      vertices[6].Position = new Vector3(.0025f, .0025f, 0);
+      vertices[7].Position = new Vector3(.0025f, -.0025f, 0);
 
-      vertices[8].Position = new Vector3(.02f, .02f, 0);
-      vertices[9].Position = new Vector3(.02f, -.02f, 0);
-      vertices[10].Position = new Vector3(-.02f, .02f, 0);
-      vertices[11].Position = new Vector3(-.02f, -.02f, 0);
+      vertices[8].Position = new Vector3(.0025f, .0025f, 0);
+      vertices[9].Position = new Vector3(.0025f, -.0025f, 0);
+      vertices[10].Position = new Vector3(-.0025f, .0025f, 0);
+      vertices[11].Position = new Vector3(-.0025f, -.0025f, 0);
 
-      vertices[12].Position = new Vector3(-.02f, .02f, .5f);
-      vertices[13].Position = new Vector3(-.02f, -.02f, .5f);
-      vertices[14].Position = new Vector3(-.02f, .02f, 0);
-      vertices[15].Position = new Vector3(-.02f, -.02f, 0);
+      vertices[12].Position = new Vector3(-.0025f, .0025f, .5f);
+      vertices[13].Position = new Vector3(-.0025f, -.0025f, .5f);
+      vertices[14].Position = new Vector3(-.0025f, .0025f, 0);
+      vertices[15].Position = new Vector3(-.0025f, -.0025f, 0);
 
-      vertices[16].Position = new Vector3(-.02f, .02f, .5f);
-      vertices[17].Position = new Vector3(.02f, .02f, .5f);
-      vertices[18].Position = new Vector3(.02f, .02f, 0);
-      vertices[19].Position = new Vector3(-.02f, .02f, 0);
+      vertices[16].Position = new Vector3(-.0025f, .0025f, .5f);
+      vertices[17].Position = new Vector3(.0025f, .0025f, .5f);
+      vertices[18].Position = new Vector3(.0025f, .0025f, 0);
+      vertices[19].Position = new Vector3(-.0025f, .0025f, 0);
 
-      vertices[20].Position = new Vector3(-.02f, -.02f, .5f);
-      vertices[21].Position = new Vector3(.02f, -.02f, .5f);
-      vertices[22].Position = new Vector3(.02f, -.02f, 0);
-      vertices[23].Position = new Vector3(-.02f, -.02f, 0);
+      vertices[20].Position = new Vector3(-.0025f, -.0025f, .5f);
+      vertices[21].Position = new Vector3(.0025f, -.0025f, .5f);
+      vertices[22].Position = new Vector3(.0025f, -.0025f, 0);
+      vertices[23].Position = new Vector3(-.0025f, -.0025f, 0);
 
       for (int i = 0; i < vertices.Length; i++) {
         vertices[i].Color = Color.White;
@@ -195,25 +188,6 @@ namespace KinectV2 {
       }
       instanceBuffer = new VertexBuffer(device, instanceVertexDeclaration, worlds.Length, BufferUsage.WriteOnly);
       instanceBuffer.SetData(instances);
-    }
-
-    // Magic hue to rgb calculating code.
-    // Source: wikipedia
-    private Color hueToColor(float hue) {
-      int h = (int)(hue * 6);
-      float f = hue * 6 - h;
-      float q = (1 - f);
-      float t = (1 - (1 - f));
-
-      switch (h) {
-        case 0: return new Color(1, t, 0);
-        case 1: return new Color(q, 1, 0);
-        case 2: return new Color(0, 1, t);
-        case 3: return new Color(0, q, 1);
-        case 4: return new Color(t, 0, 1);
-        case 5: return new Color(1, 0, q);
-      }
-      return new Color();
     }
 
     struct InstanceInfo {
