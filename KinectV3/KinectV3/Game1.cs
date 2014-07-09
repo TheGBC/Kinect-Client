@@ -24,12 +24,19 @@ namespace KinectV3 {
     KinectManager manager;
     KeyboardState prevState;
     List<Body> bodies = new List<Body>();
+
     Matrix offset = Matrix.Identity;
     Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(48.6f), 62f / 48.6f, .01f, 100f);
 
-    Matrix Tpw = Matrix.CreateRotationX(MathHelper.ToRadians(12.7f));// * Matrix.CreateTranslation(0, -.2948f, -.6f);
-    //Matrix Twp = Matrix.CreateRotationX(MathHelper.ToRadians(-12.7f));// * Matrix.CreateTranslation(0, .2948f, .6f);
-    Matrix Twp = Matrix.CreateRotationX(MathHelper.ToRadians(12.7f));
+    // Transform from physics coordinate space to world coordinate space
+    Matrix Tpw = Matrix.CreateScale(.1f)
+      * Matrix.CreateFromYawPitchRoll(MathHelper.ToRadians(3.53f), MathHelper.ToRadians(13.34f),MathHelper.ToRadians(2.61f))
+      * Matrix.CreateTranslation(0.04f, -.44f, -.66f);
+
+    // Transform from world coordinate space to physics coordinate space
+    Matrix Twp = Matrix.CreateScale(10)
+      * Matrix.CreateFromYawPitchRoll(MathHelper.ToRadians(-3.53f), MathHelper.ToRadians(-13.34f), MathHelper.ToRadians(-2.61f))
+      * Matrix.CreateTranslation(-0.04f, .44f, .66f);
     PhysicsManager physics;
 
     float aspectRatio;
@@ -40,15 +47,16 @@ namespace KinectV3 {
     //float offsetZ = 0.35f;
     Vector3 offsetPos = new Vector3(0, -.01f, .35f);
 
-    bool ENABLE_KINECT = true;
+    bool ENABLE_KINECT = false;
     bool CONTINUE_TRACK = false;
     bool toggle = false;
 
-    float mag = 1;
+    float mag = 6;
     float left = 0;
     float down = 0;
 
     Model model;
+    Model sphere;
 
     public Game1() {
       graphics = new GraphicsDeviceManager(this);
@@ -68,7 +76,6 @@ namespace KinectV3 {
     protected override void Initialize() {
       // TODO: Add your initialization logic here
       base.Initialize();
-      physics.Gravity = new Vector3(0, -9.8f, 0);
     }
 
     /// <summary>
@@ -84,38 +91,22 @@ namespace KinectV3 {
         manager = new KinectManager("out.txt", CONTINUE_TRACK);
       }
 
-      //Model cup = Content.Load<Model>("cup_top");
-      //Body bodyCup = new Body(this, cup, "");
-      //bodies.Add(bodyCup);
-      //physics.Add(bodyCup);
-
       model = Content.Load<Model>("modelascii");
-      //Body bodyWorld = new Body(this, model, "");
-      //bodyWorld.Transform = new Henge3D.Transform(1, Vector3.Zero, Quaternion.CreateFromRotationMatrix(Matrix.CreateRotationX(MathHelper.ToRadians(-12.7f))));
-      //bodies.Add(bodyWorld);
-      //physics.Add(bodyWorld);
+      sphere = Content.Load<Model>("sphere");
 
-      /*
-      BodySkin skin = new BodySkin();
-      skin.DefaultMaterial = new Material(1, 0);
-      skin.Add(
-        new PlanePart(new Vector3(0, 0, 0), Vector3.UnitY)
-      );
-      RigidBody wall = new RigidBody(skin);
-      wall.SetWorld(10, Vector3.Zero, Quaternion.Identity);
-      physics.Add(wall);*/
+      Body body = new Body(this, model, "model");
 
+      Vector3 scale = new Vector3();
+      Vector3 translation = new Vector3();
+      Quaternion rotation = new Quaternion();
+      // Convert the twp matrix into its individual parts
+      Twp.Decompose(out scale, out rotation, out translation);
+      // Scale is same for x, y, and z, so just use x
+      body.SetWorld(scale.X, translation, rotation);
 
-      //model = Content.Load<Model>("model1");
-      BodySkin skin = new BodySkin();
-      skin.DefaultMaterial = new Material(0, 0);
-      skin.Add(
-        new PlanePart(new Vector3(0, -.5f, 0), Vector3.UnitY),
-        new PlanePart(new Vector3(0, 0, -2), Vector3.UnitZ)
-      );
-      RigidBody wall = new RigidBody(skin);
-      physics.Add(wall);
-
+      physics.Add(body);
+      bodies.Add(body);
+      physics.Gravity = new Vector3(0, -9.8f, 0);
     }
 
     /// <summary>
@@ -159,7 +150,7 @@ namespace KinectV3 {
         }
       }
 
-      Matrix.CreateTranslation(ref offsetPos, out offset);
+     offset = Matrix.CreateTranslation(offsetPos);
 
       if (ENABLE_KINECT) {
         if (prevState.IsKeyUp(Keys.OemPlus) && Keyboard.GetState().IsKeyDown(Keys.OemPlus)) {
@@ -167,48 +158,44 @@ namespace KinectV3 {
           Body body = new Body(this, sphere, toggle ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1), "sphere");
 
           // Get camera pose from kinect manager
-          Matrix m = manager.Camera;
+          Matrix pose = manager.Camera * Twp;
 
           // Decompose into its scale, rotation, and translation components
           Vector3 s = new Vector3();
           Quaternion r = new Quaternion();
           Vector3 t = new Vector3();
-          m.Decompose(out s, out r, out t);
+          pose.Decompose(out s, out r, out t);
           r.X *= -1;
 
           float eulerZ = (float)Math.Atan2(2f * r.X * r.Y + 2f * r.Z * r.W, 1 - 2f * (r.Y * r.Y + r.Z * r.Z));
           float eulerX = (float)Math.Atan2(2f * r.X * r.W + 2f * r.Y * r.Z, 1 - 2f * (r.Z * r.Z + r.W * r.W));
           float eulerY = (float)Math.Asin(2f * (r.X * r.Z - r.W * r.Y));
 
-          //toggle = !toggle;
+          toggle = !toggle;
 
-          /*body.SetVelocity(new Vector3(
-              (float)(Math.Cos(eulerX) * Math.Sin(eulerY) * 10),
-              (float)(Math.Sin(eulerX) * 10),
-              (float)(Math.Cos(eulerX) * Math.Cos(eulerY) * 10)
-          ), Vector3.Zero);*/
+          body.SetVelocity(new Vector3(
+              (float)(Math.Cos(eulerX) * Math.Sin(eulerY) * mag),
+              (float)(Math.Sin(eulerX) * mag),
+              (float)(Math.Cos(eulerX) * Math.Cos(eulerY) * mag)
+          ), Vector3.Zero);
 
-          body.SetVelocity(new Vector3(0, .5f, -.5f), Vector3.Zero);
-
-          body.SetWorld(.1f, Vector3.Zero, Quaternion.Identity);
+          body.SetWorld(t);
           for (int i = 0; i < body.Skin.Count; i++) {
-            body.Skin.SetMaterial(body.Skin[i], new Material(0, 0));
+            body.Skin.SetMaterial(body.Skin[i], new Material(.5f, 1));
           }
           physics.Add(body);
           bodies.Add(body);
         }
       } else {
         if (prevState.IsKeyUp(Keys.OemPlus) && Keyboard.GetState().IsKeyDown(Keys.OemPlus)) {
-          Model sphere = Content.Load<Model>("sphere");
           Body body = new Body(this, sphere, toggle ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1), "sphere");
-          body.SetWorld(.1f, new Vector3(left, down, 0), Quaternion.Identity);
+          body.SetWorld(new Vector3(0, 2, 0));
           body.SetVelocity(new Vector3(0, 2, -mag), Vector3.Zero);
           for (int i = 0; i < body.Skin.Count; i++) {
-            body.Skin.SetMaterial(body.Skin[i], new Material(1f, 1f));
+            body.Skin.SetMaterial(body.Skin[i], new Material(.5f, 1f));
           }
           physics.Add(body);
           bodies.Add(body);
-
         }
       }
 
@@ -228,11 +215,8 @@ namespace KinectV3 {
         down += .01f;
       } else if (Keyboard.GetState().IsKeyDown(Keys.S)) {
         down -= .01f;
-      } else if (Keyboard.GetState().IsKeyDown(Keys.X)) {
-        toggle = !toggle;
-      } else if (Keyboard.GetState().IsKeyDown(Keys.Y)) {
-        manager.toggleRun();
       }
+
       // Update the model and previous state
       prevState = Keyboard.GetState();
       base.Update(gameTime);
@@ -277,44 +261,15 @@ namespace KinectV3 {
         transform.M42 = m.M42;
         transform.M43 = m.M43;
 
-        Matrix tpc = Twp * offset;
-
-
         // Render with the new transform
         foreach (Body body in bodies) {
-          body.Draw(transform, projection, tpc);
+          body.Draw(transform, projection, Tpw);
         }
-
-        if (toggle) {
-          Matrix[] meshTransforms = new Matrix[model.Bones.Count];
-          model.CopyAbsoluteBoneTransformsTo(meshTransforms);
-          foreach (var mesh in model.Meshes) {
-            foreach (BasicEffect effect in mesh.Effects) {
-              effect.World = meshTransforms[mesh.ParentBone.Index] * offset;
-              effect.View = transform;
-              effect.Projection = projection;
-            }
-            mesh.Draw();
-          }
-        }
-
-
       } else {
-        Matrix tpc = offset * Tpw;
-        Matrix identity = Matrix.Identity;
-        Vector3 translation;
-        Quaternion q;
-        Vector3 s;
-        offset.Decompose(out s, out q, out translation);
-        Matrix view = Matrix.CreateLookAt(translation, Vector3.Zero, Vector3.Up);
+        Matrix view = Matrix.CreateLookAt(offsetPos, Vector3.Zero, Vector3.Up);
         foreach (Body body in bodies) {
-          body.Draw(view,
-            projection, identity);
+          body.Draw(view, projection, Tpw);
         }
-        /*
-        foreach (Body body in bodies) {
-          body.Draw(identity, projection, offset);
-        }*/
       }
       base.Draw(gameTime);
     }
