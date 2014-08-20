@@ -230,6 +230,10 @@ namespace KinectV3 {
         show = !show;
       }
 
+      if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.OemPlus) && prevState.IsKeyUp(Microsoft.Xna.Framework.Input.Keys.OemPlus)) {
+        addBall();
+      }
+
       // Update the model and previous state
       prevState = Keyboard.GetState();
       base.Update(gameTime);
