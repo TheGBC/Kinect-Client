@@ -17,12 +17,14 @@ namespace KinectV2 {
   /// </summary>
   public class KinectManager {
     // Constants for the reconstruction volume
-    //private readonly int VOXEL_RESOLUTION = 256;
-    private readonly int VOXEL_RESOLUTION = 384; // in voxels/meter
-    private readonly int X_VOXELS = 256; // in voxels
-    //private readonly int Y_VOXELS = 384;
-    private readonly int Y_VOXELS = 256; // in voxels
-    private readonly int Z_VOXELS = 256; // in voxels
+    private readonly int VOXEL_RESOLUTION = 256;
+    //private readonly int VOXEL_RESOLUTION = 384; // in voxels/meter
+    private readonly int X_VOXELS = 384;
+    //private readonly int X_VOXELS = 256; // in voxels
+    private readonly int Y_VOXELS = 384;
+    //private readonly int Y_VOXELS = 256; // in voxels
+    private readonly int Z_VOXELS = 384;
+    //private readonly int Z_VOXELS = 256; // in voxels
 
     // Kinect sensor
     private KinectSensor sensor;
@@ -56,17 +58,21 @@ namespace KinectV2 {
     private Matrix4 worldToCameraTransform = Matrix4.Identity;
     private float alignmentEnergy;
 
+    public static readonly int DEPTH_WIDTH = 640;
+    public static readonly int DEPTH_HEIGHT = 480;
 
+    public static readonly int IMG_WIDTH = 640;
+    public static readonly int IMG_HEIGHT = 480;
     // byte array used as the container for data ready to be read
-    private byte[] outColor = new byte[640 * 480 * 4];
+    private byte[] outColor = new byte[IMG_WIDTH * IMG_HEIGHT * 4];
     // byte array to read data from color frame into
-    private byte[] color = new byte[640 * 480 * 4];
+    private byte[] color = new byte[IMG_WIDTH * IMG_HEIGHT * 4];
 
     // Temporary frames to copy data into
-    private FusionFloatImageFrame frame = new FusionFloatImageFrame(640, 480);
-    private FusionFloatImageFrame smoothDepthFloatFrame = new FusionFloatImageFrame(640, 480);
-    private FusionPointCloudImageFrame observedPointCloud = new FusionPointCloudImageFrame(640, 480);
-    private FusionPointCloudImageFrame imgFrame = new FusionPointCloudImageFrame(640, 480);
+    private FusionFloatImageFrame frame = new FusionFloatImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionFloatImageFrame smoothDepthFloatFrame = new FusionFloatImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionPointCloudImageFrame observedPointCloud = new FusionPointCloudImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionPointCloudImageFrame imgFrame = new FusionPointCloudImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
 
 
     // Use camera pose finder as another method of trying to locate the correct camera pose
@@ -74,21 +80,21 @@ namespace KinectV2 {
     private CameraPoseFinder poseFinder = CameraPoseFinder.FusionCreateCameraPoseFinder(CameraPoseFinderParameters.Defaults);
 
     // Temporary frames to copy data into, used for camera pose finder, currently not used
-    private int[] deltaFromReferenceFramePixelsArgb = new int[640 * 480];
-    private FusionFloatImageFrame smoothDepthFloatFrameCamera = new FusionFloatImageFrame(640, 480);
-    private FusionPointCloudImageFrame depthPointCloudFrame = new FusionPointCloudImageFrame(640, 480);
-    private FusionPointCloudImageFrame raycastPointCloudFrame = new FusionPointCloudImageFrame(640, 480);
-    private FusionColorImageFrame delta = new FusionColorImageFrame(640, 480);
+    private int[] deltaFromReferenceFramePixelsArgb = new int[DEPTH_WIDTH * DEPTH_HEIGHT];
+    private FusionFloatImageFrame smoothDepthFloatFrameCamera = new FusionFloatImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionPointCloudImageFrame depthPointCloudFrame = new FusionPointCloudImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionPointCloudImageFrame raycastPointCloudFrame = new FusionPointCloudImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
+    private FusionColorImageFrame delta = new FusionColorImageFrame(DEPTH_WIDTH, DEPTH_HEIGHT);
 
     // Holder for frames passed from the sensor, ready for the background threads to handle
     private DepthImageFrameReadyEventArgs de;
     private ColorImageFrameReadyEventArgs ce;
 
     // Depth to Color mapping, aligns color image to depth image so the marker and overlay align better
-    private ColorImagePoint[] points = new ColorImagePoint[640 * 480];
+    private ColorImagePoint[] points = new ColorImagePoint[IMG_WIDTH * IMG_HEIGHT];
     private CoordinateMapper mapper;
 
-    private float[] pointCloud = new float[640 * 480];
+    private float[] pointCloud = new float[DEPTH_WIDTH * DEPTH_HEIGHT];
 
     private bool running = true;
 
@@ -269,15 +275,15 @@ namespace KinectV2 {
           Monitor.Enter(colorPointLock);
           if (points != null) {
             // for each color pixel (4 bytes) move it to the new mapping to match up with the depth pixel
-            byte[] newColors = new byte[640 * 480 * 4];
-            for (int y = 0; y < 480; y++) {
-              for (int x = 0; x < 640; x++) {
-                ColorImagePoint p = points[y * 640 + x];
-                if (p.Y < 480 && p.Y >= 0 && p.X < 640 && p.X >= 0) {
-                  newColors[4 * ((y * 640) + x)] = color[4 * ((p.Y * 640) + p.X)];
-                  newColors[4 * ((y * 640) + x) + 1] = color[4 * ((p.Y * 640) + p.X) + 1];
-                  newColors[4 * ((y * 640) + x) + 2] = color[4 * ((p.Y * 640) + p.X) + 2];
-                  newColors[4 * ((y * 640) + x) + 3] = color[4 * ((p.Y * 640) + p.X) + 3];
+            byte[] newColors = new byte[IMG_WIDTH * IMG_HEIGHT * 4];
+            for (int y = 0; y < IMG_HEIGHT; y++) {
+              for (int x = 0; x < IMG_WIDTH; x++) {
+                ColorImagePoint p = points[y * IMG_WIDTH + x];
+                if (p.Y < IMG_HEIGHT && p.Y >= 0 && p.X < IMG_WIDTH && p.X >= 0) {
+                  newColors[4 * ((y * IMG_WIDTH) + x)] = color[4 * ((p.Y * IMG_WIDTH) + p.X)];
+                  newColors[4 * ((y * IMG_WIDTH) + x) + 1] = color[4 * ((p.Y * IMG_WIDTH) + p.X) + 1];
+                  newColors[4 * ((y * IMG_WIDTH) + x) + 2] = color[4 * ((p.Y * IMG_WIDTH) + p.X) + 2];
+                  newColors[4 * ((y * IMG_WIDTH) + x) + 3] = color[4 * ((p.Y * IMG_WIDTH) + p.X) + 3];
                 }
               }
             }
@@ -329,21 +335,21 @@ namespace KinectV2 {
           // Get a mapping between color points and depth points, to align the color image so it looks like the depth image
           // This helps in aligning the object to the marker better
           Monitor.Enter(colorPointLock);
-          mapper.MapDepthFrameToColorFrame(DepthImageFormat.Resolution640x480Fps30, depth,
-              ColorImageFormat.RgbResolution640x480Fps30, points);
+          mapper.MapDepthFrameToColorFrame(DEPTH_FORMAT, depth,
+              COLOR_FORMAT, points);
           Monitor.Exit(colorPointLock);
 
           // Obtain raw data from frames
           depthFrame.CopyDepthImagePixelDataTo(depth);
 
           // Construct into a fusionfloatimageframe
-          FusionDepthProcessor.DepthToDepthFloatFrame(depth, 640, 480, frame, FusionDepthProcessor.DefaultMinimumDepth, FusionDepthProcessor.DefaultMaximumDepth, false);
+          FusionDepthProcessor.DepthToDepthFloatFrame(depth, DEPTH_WIDTH, DEPTH_HEIGHT, frame, FusionDepthProcessor.DefaultMinimumDepth, FusionDepthProcessor.DefaultMaximumDepth, false);
           this.volume.SmoothDepthFloatFrame(frame, smoothDepthFloatFrame, 1, .04f);
           smoothDepthFloatFrame.CopyPixelDataTo(pointCloud);
 
 
           if (continuousTrack && hasInitAlign) {
-            continueVolume.IntegrateFrame(smoothDepthFloatFrame, 10, currentMatrix);
+            continueVolume.IntegrateFrame(smoothDepthFloatFrame, 7, currentMatrix);
             Matrix4 t = toMatrix4(Matrix.Multiply(toMatrix(initAlign), toMatrix(continueVolume.GetCurrentWorldToCameraTransform())));
             Monitor.Enter(matrixLock);
             currentMatrix = t;
@@ -371,7 +377,6 @@ namespace KinectV2 {
           }
           
           // Log out the current matrix
-          //Console.WriteLine(success);
           //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M11, currentMatrix.M12, currentMatrix.M13, currentMatrix.M14);
           //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M21, currentMatrix.M22, currentMatrix.M23, currentMatrix.M24);
           //Console.WriteLine("{0} {1} {2} {3}", currentMatrix.M31, currentMatrix.M32, currentMatrix.M33, currentMatrix.M34);

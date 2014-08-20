@@ -121,13 +121,6 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="cube2overlay.fbx">
-      <Name>cube2overlay</Name>
-      <Importer>FbxImporter</Importer>
-      <Processor>ModelProcessor</Processor>
-    </Compile>
-  </ItemGroup>
-  <ItemGroup>
     <Compile Include="model2.fbx">
       <Name>model2</Name>
       <Importer>FbxImporter</Importer>

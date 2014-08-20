@@ -48,13 +48,6 @@
     </ProjectReference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="cup_top.fbx">
-      <Name>cup_top</Name>
-      <Importer>FbxImporter</Importer>
-      <Processor>RigidBodyModelProcessor</Processor>
-    </Compile>
-  </ItemGroup>
-  <ItemGroup>
     <Compile Include="sphere.fbx">
       <Name>sphere</Name>
       <Importer>FbxImporter</Importer>
@@ -62,22 +55,20 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="model.fbx">
-      <Name>model</Name>
-      <Importer>FbxImporter</Importer>
-      <Processor>ModelProcessor</Processor>
-    </Compile>
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Include="modelascii.fbx">
-      <Name>modelascii</Name>
+    <Compile Include="wall-model-small.fbx">
+      <Name>wall-model-small</Name>
       <Importer>FbxImporter</Importer>
       <Processor>RigidBodyModelProcessor</Processor>
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="modelsmall.fbx">
-      <Name>modelsmall</Name>
+    <Compile Include="cup_bottom.fbx">
+      <Name>cup_bottom</Name>
+      <Importer>FbxImporter</Importer>
+      <Processor>RigidBodyModelProcessor</Processor>
+    </Compile>
+    <Compile Include="cup_top.fbx">
+      <Name>cup_top</Name>
       <Importer>FbxImporter</Importer>
       <Processor>RigidBodyModelProcessor</Processor>
     </Compile>
