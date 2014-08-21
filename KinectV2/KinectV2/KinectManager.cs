@@ -43,6 +43,11 @@ namespace KinectV2 {
     private readonly DepthImageFormat DEPTH_FORMAT = DepthImageFormat.Resolution640x480Fps30;
     private readonly ColorImageFormat COLOR_FORMAT = ColorImageFormat.RgbResolution640x480Fps30;
 
+    private string modelData;
+    public bool isLoading = true;
+    public int progress = 0;
+    public int max = 0;
+
     // Reconstruction volume to hold prescanned model
     private ColorReconstruction volume;
     private ColorReconstruction continueVolume;
@@ -99,42 +104,11 @@ namespace KinectV2 {
     private bool running = true;
 
     public KinectManager(string modelData, bool continuousTrack) {
+      this.modelData = modelData;
       // Read in the pose finder
       poseFinder.LoadCameraPoseFinderDatabase("poseFinder.txt");
 
       this.continuousTrack = continuousTrack;
-
-      // Read in the model reconstruction (prescanned model)
-      FileStream stream = System.IO.File.OpenRead(modelData);
-      // Open bracket
-      char ch = (char) stream.ReadByte();
-      // Copy all the model data into a short array of the same size
-      short[] modelVolumeData = new short[X_VOXELS * Y_VOXELS * Z_VOXELS];
-      // Parse what is essentially a really big json array
-      StringBuilder b = new StringBuilder();
-      for (int i = 0; i < modelVolumeData.Length; i++) {
-        ch = (char)stream.ReadByte();
-        while (ch != ']' && ch != ',') {
-          b.Append(ch);
-          ch = (char)stream.ReadByte();
-        }
-        modelVolumeData[i] = short.Parse(b.ToString());
-        b.Clear();
-        // Update after every 100000 characters read
-        if (i % 100000 == 0) {
-          Console.WriteLine(i);
-        }
-      }
-
-      // Build the reconstruction volume from the prescanned model
-      // Now we have access to our prescanned model
-      ReconstructionParameters rParams = new ReconstructionParameters(VOXEL_RESOLUTION, X_VOXELS, Y_VOXELS, Z_VOXELS);
-      volume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
-      volume.ImportVolumeBlock(modelVolumeData);
-
-      if (continuousTrack) {
-        continueVolume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
-      }
 
       // Find a kinect
       foreach (KinectSensor potentialSensor in KinectSensor.KinectSensors) {
@@ -151,16 +125,51 @@ namespace KinectV2 {
 
       // Enable and set up the listeners for the sensor
       mapper = new CoordinateMapper(sensor);
-      sensor.DepthStream.Enable(DEPTH_FORMAT);
       sensor.ColorStream.Enable(COLOR_FORMAT);
 
       sensor.ColorFrameReady += colorFrameReady;
-      sensor.DepthFrameReady += depthFrameReady;
 
       // Start the sensor reading data and the background threads
       sensor.Start();
-      new Thread(new ThreadStart(runDepth)).Start();
+      new Thread(new ThreadStart(loadAndStartDepth)).Start();
       new Thread(new ThreadStart(runColor)).Start();
+    }
+
+    private void loadAndStartDepth() {
+      // Read in the model reconstruction (prescanned model)
+      FileStream stream = System.IO.File.OpenRead(modelData);
+      // Open bracket
+      char ch = (char)stream.ReadByte();
+      // Copy all the model data into a short array of the same size
+      short[] modelVolumeData = new short[X_VOXELS * Y_VOXELS * Z_VOXELS];
+      max = modelVolumeData.Length;
+      // Parse what is essentially a really big json array
+      StringBuilder b = new StringBuilder();
+      for (int i = 0; i < modelVolumeData.Length; i++) {
+        ch = (char)stream.ReadByte();
+        while (ch != ']' && ch != ',') {
+          b.Append(ch);
+          ch = (char)stream.ReadByte();
+        }
+        modelVolumeData[i] = short.Parse(b.ToString());
+        b.Clear();
+        progress = i;
+      }
+
+      // Build the reconstruction volume from the prescanned model
+      // Now we have access to our prescanned model
+      ReconstructionParameters rParams = new ReconstructionParameters(VOXEL_RESOLUTION, X_VOXELS, Y_VOXELS, Z_VOXELS);
+      volume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
+      volume.ImportVolumeBlock(modelVolumeData);
+
+      if (continuousTrack) {
+        continueVolume = ColorReconstruction.FusionCreateReconstruction(rParams, ReconstructionProcessor.Amp, -1, Matrix4.Identity);
+      }
+
+      sensor.DepthStream.Enable(DEPTH_FORMAT);
+      sensor.DepthFrameReady += depthFrameReady;
+      isLoading = false;
+      new Thread(new ThreadStart(runDepth)).Start();
     }
 
     public void toggleRun() {
@@ -273,7 +282,7 @@ namespace KinectV2 {
           // Enter into a colorPointLock to make sure that the colorpoint array isn't
           // changed or updated while processing it
           Monitor.Enter(colorPointLock);
-          if (points != null) {
+          if (points != null && !isLoading) {
             // for each color pixel (4 bytes) move it to the new mapping to match up with the depth pixel
             byte[] newColors = new byte[IMG_WIDTH * IMG_HEIGHT * 4];
             for (int y = 0; y < IMG_HEIGHT; y++) {
