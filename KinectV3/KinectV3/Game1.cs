@@ -40,6 +40,9 @@ namespace KinectV3 {
     KeyboardState prevState;
     List<Body> balls = new List<Body>();
 
+    RpcBody bodies;
+    List<Matrix> bodiesTransforms = new List<Matrix>();
+
     Matrix offset = Matrix.Identity;
     Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(48.6f), 62f / 48.6f, .01f, 100f);
 
@@ -97,6 +100,11 @@ namespace KinectV3 {
     Body cupTopBody;
     Body cupBottomBody;
 
+    private string addBalls = "";
+
+    private object writeLock = new object();
+    private object readLock = new object();
+
     public Game1() {
       graphics = new GraphicsDeviceManager(this);
       graphics.PreferredBackBufferWidth = KinectManager.IMG_WIDTH;
@@ -104,7 +112,7 @@ namespace KinectV3 {
       Content.RootDirectory = "Content";
       prevState = Keyboard.GetState();
       if (ENABLE_PHYSICS) {
-        physics = new PhysicsManager(this);
+        //physics = new PhysicsManager(this);
       }
     }
 
@@ -144,6 +152,8 @@ namespace KinectV3 {
       sphere = Content.Load<Model>("sphere");
       cup_bottom = Content.Load<Model>("cup_bottom");
       cup_top = Content.Load<Model>("cup_top");
+      bodies = new RpcBody(sphere, "sphere");
+      /*
 
       modelBody = new Body(this, model, "model", true);
       cupTopBody = new Body(this, cup_top, "cup_top");
@@ -155,9 +165,10 @@ namespace KinectV3 {
         transformAndAdd(cupTopBody, physics);
         transformAndAdd(cupBottomBody, physics);
         physics.Gravity = new Vector3(0, -9.8f, 0);
-      }
+      }*/
 
       //new Thread(new ThreadStart(tcpRun)).Start();
+      new Thread(new ThreadStart(tcpPhysics)).Start();
     }
 
     private void transformAndAdd(Body model, PhysicsManager physicsEngine, bool rotate = false) {
@@ -220,8 +231,6 @@ namespace KinectV3 {
       Quaternion rotation = new Quaternion();
       m.Decompose(out scale, out rotation, out cameraTranslation);
 
-      
-
       double sqw = rotation.W * rotation.W;
       double sqx = rotation.X * rotation.X;
       double sqy = rotation.Y * rotation.Y;
@@ -278,7 +287,15 @@ namespace KinectV3 {
     }
 
     private void addBall(Vector3 translation) {
-      Console.WriteLine("BALL");
+      Monitor.Enter(writeLock);
+      addBalls = string.Format("{0},{1},{2},{3},{4},{5}", translation.X, translation.Y, translation.Z, mag, xAngle, yAngle);
+      Console.WriteLine(addBalls);
+      Monitor.Exit(writeLock);
+
+      if (1 != 2) {
+        return;
+      }
+
       if (ENABLE_PHYSICS) {
         if (ENABLE_KINECT) {
           Body body = new Body(this, sphere, toggle ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1), "sphere");
@@ -310,6 +327,36 @@ namespace KinectV3 {
         }
       }
     }
+
+    private void tcpPhysics() {
+      tcpClient = new TcpClient("127.0.0.1", 9000);
+      StreamReader reader = new StreamReader(tcpClient.GetStream());
+      StreamWriter writer = new StreamWriter(tcpClient.GetStream());
+      while (true) {
+        Monitor.Enter(writeLock);
+        writer.WriteLine(addBalls);
+        writer.Flush();
+        addBalls = "";
+        Monitor.Exit(writeLock);
+        string data = reader.ReadLine();
+        Monitor.Enter(readLock);
+        bodiesTransforms.Clear();
+        if (!data.Equals("")) {
+          string[] parts = data.Split('|');
+          foreach (string part in parts) {
+            string[] matParts = part.Split(',');
+            bodiesTransforms.Add(new Matrix(
+              float.Parse(matParts[0]), float.Parse(matParts[1]), float.Parse(matParts[2]), float.Parse(matParts[3]),
+              float.Parse(matParts[4]), float.Parse(matParts[5]), float.Parse(matParts[6]), float.Parse(matParts[7]),
+              float.Parse(matParts[8]), float.Parse(matParts[9]), float.Parse(matParts[10]), float.Parse(matParts[11]),
+              float.Parse(matParts[12]), float.Parse(matParts[13]), float.Parse(matParts[14]), float.Parse(matParts[15])
+            ));
+          }
+        }
+        Monitor.Exit(readLock);
+      }
+    }
+
 
     private string serializeMVPs(List<Matrix> mats) {
       StringBuilder builder = new StringBuilder();
@@ -422,20 +469,26 @@ namespace KinectV3 {
           transform.M42 = m.M42;
           transform.M43 = m.M43;
 
-          modelBody.Draw(transform, projection, Tpw * offset, show);
+          //modelBody.Draw(transform, projection, Tpw * offset, show);
 
           // Render with the new transform
           Monitor.Enter(byteBufferLock);
           mvs.Clear();
-          mvs.Add(cupTopBody.MV(transform, Tpw * offset));
-          mvs.Add(cupTopBody.MV(transform, Tpw * offset) * projection);
+          //mvs.Add(cupTopBody.MV(transform, Tpw * offset));
+          //mvs.Add(cupTopBody.MV(transform, Tpw * offset) * projection);
+
+          Monitor.Enter(readLock);
+          bodies.Draw(transform, projection, Tpw * offset, bodiesTransforms);
+          Monitor.Exit(readLock);
+
+          /*
           foreach (Body body in balls) {
             body.Draw(transform, projection, Tpw * offset);
             mvs.Add(body.MV(transform, Tpw * offset));
             mvs.Add(body.MV(transform, Tpw * offset) * projection);
-          }
-          cupBottomBody.Draw(transform, projection, Tpw * offset);
-          cupTopBody.Draw(transform, projection, Tpw * offset);
+          }*/
+          //cupBottomBody.Draw(transform, projection, Tpw * offset);
+          //cupTopBody.Draw(transform, projection, Tpw * offset);
           Monitor.Exit(byteBufferLock);
         }
       } else {
