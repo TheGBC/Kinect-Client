@@ -115,6 +115,7 @@
     <Compile Include="Game1.cs" />
     <Compile Include="Quad.cs" />
     <Compile Include="RpcBody.cs" />
+    <Compile Include="StaticBody.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Game.ico" />

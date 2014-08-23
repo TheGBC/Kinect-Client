@@ -24,10 +24,6 @@ namespace KinectV3 {
   /// This is the main type for your game
   /// </summary>
   public class Game1 : Microsoft.Xna.Framework.Game {
-    object byteBufferLock = new object();
-    List<Matrix> mvs = new List<Matrix>();
-    Matrix cupMv;
-
     GraphicsDeviceManager graphics;
     SpriteBatch spriteBatch;
     Texture2D cameraFeed;
@@ -40,8 +36,10 @@ namespace KinectV3 {
     KeyboardState prevState;
     List<Body> balls = new List<Body>();
 
-    RpcBody bodies;
-    List<Matrix> bodiesTransforms = new List<Matrix>();
+    RpcBody bodies1;
+    List<Matrix> bodiesTransforms1 = new List<Matrix>();
+    RpcBody bodies2;
+    List<Matrix> bodiesTransforms2 = new List<Matrix>();
 
     Matrix offset = Matrix.Identity;
     Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(48.6f), 62f / 48.6f, .01f, 100f);
@@ -62,22 +60,19 @@ namespace KinectV3 {
           MathHelper.ToRadians(0))
       * Matrix.CreateScale(10);
 
-    PhysicsManager physics;
-
     float aspectRatio;
 
-    int score = 0;
+    int red = 0;
+    int blue = 0;
 
     TcpClient tcpClient;
 
     // Empirically gathered offset
     Vector3 offsetPos = new Vector3(0, -.01f, .35f);
 
-    bool ENABLE_PHYSICS = true;
+    bool FULLSCREEN = false;
     bool ENABLE_KINECT = true;
     bool CONTINUE_TRACK = false;
-    bool toggle = false;
-
     bool show = true;
 
     string MODEL = "wall-model-small";
@@ -96,24 +91,26 @@ namespace KinectV3 {
     Model cup_bottom;
     Model cup_top;
 
-    Body modelBody;
-    Body cupTopBody;
-    Body cupBottomBody;
+    StaticBody modelBody;
+    StaticBody cupTopBody;
+    StaticBody cupBottomBody;
 
     private string addBalls = "";
 
     private object writeLock = new object();
     private object readLock = new object();
 
+    private static readonly int BLUE_BALL = 0;
+    private static readonly int RED_BALL = 1;
+    private int player = BLUE_BALL;
+
     public Game1() {
       graphics = new GraphicsDeviceManager(this);
       graphics.PreferredBackBufferWidth = KinectManager.IMG_WIDTH;
       graphics.PreferredBackBufferHeight = KinectManager.IMG_HEIGHT;
+      graphics.IsFullScreen = FULLSCREEN;
       Content.RootDirectory = "Content";
       prevState = Keyboard.GetState();
-      if (ENABLE_PHYSICS) {
-        //physics = new PhysicsManager(this);
-      }
     }
 
     /// <summary>
@@ -134,7 +131,7 @@ namespace KinectV3 {
     protected override void LoadContent() {
       cameraFeed = new Texture2D(graphics.GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT);
       overlay = new Texture2D(graphics.GraphicsDevice, 1, 1);
-      overlay.SetData<Microsoft.Xna.Framework.Color>(new Microsoft.Xna.Framework.Color[] { Microsoft.Xna.Framework.Color.White });
+      overlay.SetData<Microsoft.Xna.Framework.Color>(new Microsoft.Xna.Framework.Color[] { new Microsoft.Xna.Framework.Color(1, 1, 1, .1f) });
 
       quad = new Quad(graphics.GraphicsDevice, cameraFeed);
 
@@ -152,35 +149,18 @@ namespace KinectV3 {
       sphere = Content.Load<Model>("sphere");
       cup_bottom = Content.Load<Model>("cup_bottom");
       cup_top = Content.Load<Model>("cup_top");
-      bodies = new RpcBody(sphere, "sphere");
-      /*
+      bodies1 = new RpcBody(sphere, new Vector3(0, 0, 1), "sphere");
+      bodies2 = new RpcBody(sphere, new Vector3(1, 0, 0), "sphere");
 
-      modelBody = new Body(this, model, "model", true);
-      cupTopBody = new Body(this, cup_top, "cup_top");
-      cupBottomBody = new Body(this, cup_bottom, "cup_bottom");
-      cupBottomBody.OnCollision += OnCollide;
+      modelBody = new StaticBody(model, transform(true), "wall", true);
+      cupTopBody = new StaticBody(cup_top, transform(), "cup_top", false);
+      cupBottomBody = new StaticBody(cup_bottom, transform(), "cup_bottom", false);
 
-      if (ENABLE_PHYSICS) {
-        transformAndAdd(modelBody, physics, true);
-        transformAndAdd(cupTopBody, physics);
-        transformAndAdd(cupBottomBody, physics);
-        physics.Gravity = new Vector3(0, -9.8f, 0);
-      }*/
-
-      //new Thread(new ThreadStart(tcpRun)).Start();
       new Thread(new ThreadStart(tcpPhysics)).Start();
     }
 
-    private void transformAndAdd(Body model, PhysicsManager physicsEngine, bool rotate = false) {
-      Vector3 scale = new Vector3();
-      Vector3 translation = new Vector3();
-      Quaternion rotation = new Quaternion();
-      Matrix trans =  (rotate ? Matrix.CreateRotationZ(MathHelper.ToRadians(-90)) : Matrix.CreateRotationY(MathHelper.ToRadians(-90))) * Twp;
-      // Convert the twp matrix into its individual parts
-      trans.Decompose(out scale, out rotation, out translation);
-      // Scale is same for x, y, and z, so just use x
-      model.SetWorld(scale.X, translation, rotation);
-      physics.Add(model);
+    private Matrix transform(bool rotate = false) {
+      return (rotate ? Matrix.CreateRotationZ(MathHelper.ToRadians(-90)) : Matrix.CreateRotationY(MathHelper.ToRadians(-90))) * Twp;
     }
 
     /// <summary>
@@ -239,26 +219,6 @@ namespace KinectV3 {
       yAngle = (float)Math.Asin(2f * (rotation.X * rotation.Z - rotation.W * rotation.Y));
       zAngle = (float)Math.Atan2(2f * rotation.X * rotation.Y + 2f * rotation.Z * rotation.W, 1 - 2f * (sqy + sqz));
 
-
-
-      if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Up)) {
-        mag += .01f;
-        Console.WriteLine(mag);
-      } else if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Down)) {
-        mag -= .01f;
-        Console.WriteLine(mag);
-      } else if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Left)) {
-        left -= .01f;
-        Console.WriteLine(left);
-      } else if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.Right)) {
-        left += .01f;
-        Console.WriteLine(left);
-      } else if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.W)) {
-        down += .01f;
-      } else if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.S)) {
-        down -= .01f;
-      }
-
       if (Keyboard.GetState().IsKeyUp(Microsoft.Xna.Framework.Input.Keys.I) && prevState.IsKeyDown(Microsoft.Xna.Framework.Input.Keys.I)) {
         show = !show;
       }
@@ -272,60 +232,11 @@ namespace KinectV3 {
       base.Update(gameTime);
     }
 
-    private bool OnCollide(RigidBody b1, RigidBody b2) {
-      Body body1 = b1 as Body;
-      Body body2 = b2 as Body;
-
-      if (body1.Tag == "cup_bottom" && body2.Tag == "sphere") {
-        physics.Remove(body2);
-        score++;
-      } else if (body2.Tag == "cup_bottom" && body1.Tag == "sphere") {
-        physics.Remove(body1);
-        score++;
-      }
-      return false;
-    }
-
     private void addBall(Vector3 translation) {
       Monitor.Enter(writeLock);
-      addBalls = string.Format("{0},{1},{2},{3},{4},{5}", translation.X, translation.Y, translation.Z, mag, xAngle, yAngle);
+      addBalls = string.Format("{0},{1},{2},{3},{4},{5},{6}", player, translation.X, translation.Y, translation.Z, mag, xAngle, yAngle);
       Console.WriteLine(addBalls);
       Monitor.Exit(writeLock);
-
-      if (1 != 2) {
-        return;
-      }
-
-      if (ENABLE_PHYSICS) {
-        if (ENABLE_KINECT) {
-          Body body = new Body(this, sphere, toggle ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1), "sphere");
-          body.SetWorld(translation);
-
-          float xVel = mag * (float)(Math.Sin(yAngle) * Math.Sin(xAngle - Math.PI / 2));
-          float yVel = -mag * (float)Math.Cos(xAngle - Math.PI / 2);
-          float zVel = -mag * (float)(Math.Cos(yAngle) * Math.Sin(xAngle - Math.PI / 2));
-
-          body.SetVelocity(new Vector3(xVel, yVel, zVel), Vector3.Zero);
-          for (int i = 0; i < body.Skin.Count; i++) {
-            body.Skin.SetMaterial(body.Skin[i], new Material(.8f, .5f));
-          }
-          body.OnCollision += OnCollide;
-          physics.Add(body);
-          balls.Add(body);
-
-        }
-      } else {
-        if (prevState.IsKeyUp(Microsoft.Xna.Framework.Input.Keys.OemPlus) && Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.OemPlus)) {
-          Body body = new Body(this, sphere, toggle ? new Vector3(1, 0, 0) : new Vector3(0, 0, 1), "sphere");
-          body.SetWorld(new Vector3(0, 2, 0));
-          body.SetVelocity(new Vector3(0, 2, -mag), Vector3.Zero);
-          for (int i = 0; i < body.Skin.Count; i++) {
-            body.Skin.SetMaterial(body.Skin[i], new Material(.8f, .5f));
-          }
-          physics.Add(body);
-          balls.Add(body);
-        }
-      }
     }
 
     private void tcpPhysics() {
@@ -340,91 +251,30 @@ namespace KinectV3 {
         Monitor.Exit(writeLock);
         string data = reader.ReadLine();
         Monitor.Enter(readLock);
-        bodiesTransforms.Clear();
-        if (!data.Equals("")) {
-          string[] parts = data.Split('|');
-          foreach (string part in parts) {
-            string[] matParts = part.Split(',');
-            bodiesTransforms.Add(new Matrix(
-              float.Parse(matParts[0]), float.Parse(matParts[1]), float.Parse(matParts[2]), float.Parse(matParts[3]),
-              float.Parse(matParts[4]), float.Parse(matParts[5]), float.Parse(matParts[6]), float.Parse(matParts[7]),
-              float.Parse(matParts[8]), float.Parse(matParts[9]), float.Parse(matParts[10]), float.Parse(matParts[11]),
-              float.Parse(matParts[12]), float.Parse(matParts[13]), float.Parse(matParts[14]), float.Parse(matParts[15])
-            ));
-          }
+        string[] colors = data.Split('*');
+        blue = int.Parse(colors[0]);
+        red = int.Parse(colors[1]);
+        if (!colors[2].Equals("")) {
+          setBalls(colors[2], bodiesTransforms1);
+        }
+        if (!colors[3].Equals("")) {
+          setBalls(colors[3], bodiesTransforms2);
         }
         Monitor.Exit(readLock);
       }
     }
 
-
-    private string serializeMVPs(List<Matrix> mats) {
-      StringBuilder builder = new StringBuilder();
-      builder.Append('[');
-      for (int i = 0; i < mats.Count; i += 2) {
-        if (i != 0) {
-          builder.Append(',');
-        }
-        builder.Append('[');
-        for (int j = 0; j < 2; j++) {
-          Matrix m = mats[i + j];
-          builder.Append(m.M11);
-          builder.Append(',');
-          builder.Append(m.M12);
-          builder.Append(',');
-          builder.Append(m.M13);
-          builder.Append(',');
-          builder.Append(m.M14);
-          builder.Append(',');
-          builder.Append(m.M21);
-          builder.Append(',');
-          builder.Append(m.M22);
-          builder.Append(',');
-          builder.Append(m.M23);
-          builder.Append(',');
-          builder.Append(m.M24);
-          builder.Append(',');
-          builder.Append(m.M31);
-          builder.Append(',');
-          builder.Append(m.M32);
-          builder.Append(',');
-          builder.Append(m.M33);
-          builder.Append(',');
-          builder.Append(m.M34);
-          builder.Append(',');
-          builder.Append(m.M41);
-          builder.Append(',');
-          builder.Append(m.M42);
-          builder.Append(',');
-          builder.Append(m.M43);
-          builder.Append(',');
-          builder.Append(m.M44);
-          if (j == 0) {
-            builder.Append(',');
-          }
-        }
-        builder.Append(']');
-      }
-      builder.Append(']');
-      return builder.ToString();
-    }
-
-    private void tcpRun() {
-      tcpClient = new TcpClient("127.0.0.1", 8000);
-      tcpClient.ReceiveBufferSize = 1;
-      while (true) {
-        byte[] readBlock = new byte[1];
-        tcpClient.GetStream().Read(readBlock, 0, 1);
-        if (readBlock[0] != 0) {
-          addBall(cameraTranslation);
-        }
-        Monitor.Enter(byteBufferLock);
-        string str = serializeMVPs(mvs) + '\n';
-        Monitor.Exit(byteBufferLock);
-        byte[] bytes = Encoding.UTF8.GetBytes(str);
-        tcpClient.SendBufferSize = bytes.Length;
-        tcpClient.GetStream().Write(bytes, 0, bytes.Length);
-        tcpClient.GetStream().Flush();
+    private void setBalls(string ballList, List<Matrix> transforms) {
+      transforms.Clear();
+      string[] parts = ballList.Split('|');
+      foreach (string part in parts) {
+        string[] matParts = part.Split(',');
+        transforms.Add(new Matrix(
+          float.Parse(matParts[0]), float.Parse(matParts[1]), float.Parse(matParts[2]), float.Parse(matParts[3]),
+          float.Parse(matParts[4]), float.Parse(matParts[5]), float.Parse(matParts[6]), float.Parse(matParts[7]),
+          float.Parse(matParts[8]), float.Parse(matParts[9]), float.Parse(matParts[10]), float.Parse(matParts[11]),
+          float.Parse(matParts[12]), float.Parse(matParts[13]), float.Parse(matParts[14]), float.Parse(matParts[15])
+        ));
       }
     }
 
@@ -446,11 +296,13 @@ namespace KinectV3 {
 
         // Change GraphicsDevice settings to allow for occlusion
         GraphicsDevice.RasterizerState = RasterizerState.CullCounterClockwise;
+        GraphicsDevice.BlendState = BlendState.AlphaBlend;
         GraphicsDevice.DepthStencilState = DepthStencilState.Default;
 
+        // Draw the camera feed
+        quad.Draw(projection);
+
         if (!manager.isLoading) {
-          // Draw the camera feed
-          quad.Draw(projection);
           // Get camera pose from kinect manager
           Matrix m = manager.Camera;
 
@@ -469,27 +321,15 @@ namespace KinectV3 {
           transform.M42 = m.M42;
           transform.M43 = m.M43;
 
-          //modelBody.Draw(transform, projection, Tpw * offset, show);
-
-          // Render with the new transform
-          Monitor.Enter(byteBufferLock);
-          mvs.Clear();
-          //mvs.Add(cupTopBody.MV(transform, Tpw * offset));
-          //mvs.Add(cupTopBody.MV(transform, Tpw * offset) * projection);
+          modelBody.Draw(transform, projection, Tpw * offset, show);
 
           Monitor.Enter(readLock);
-          bodies.Draw(transform, projection, Tpw * offset, bodiesTransforms);
+          bodies1.Draw(transform, projection, Tpw * offset, bodiesTransforms1);
+          bodies2.Draw(transform, projection, Tpw * offset, bodiesTransforms2);
           Monitor.Exit(readLock);
 
-          /*
-          foreach (Body body in balls) {
-            body.Draw(transform, projection, Tpw * offset);
-            mvs.Add(body.MV(transform, Tpw * offset));
-            mvs.Add(body.MV(transform, Tpw * offset) * projection);
-          }*/
-          //cupBottomBody.Draw(transform, projection, Tpw * offset);
-          //cupTopBody.Draw(transform, projection, Tpw * offset);
-          Monitor.Exit(byteBufferLock);
+          cupBottomBody.Draw(transform, projection, Tpw * offset);
+          cupTopBody.Draw(transform, projection, Tpw * offset);
         }
       } else {
         Matrix view = Matrix.CreateLookAt(offsetPos, Vector3.Zero, Vector3.Up);
@@ -499,13 +339,12 @@ namespace KinectV3 {
       }
 
       spriteBatch.Begin();
-      if (manager.isLoading) {
-        spriteBatch.Draw(cameraFeed, rect(0, 0, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT), color(1, 1, 1, 1));
-        drawProgress(manager.progress, manager.max);
-      } else {
+      if (!manager.isLoading) {
         drawVerticalTick();
         drawHorizontalTick();
         drawScore();
+      } else {
+        drawProgress(manager.progress, manager.max);
       }
       spriteBatch.End();
       base.Draw(gameTime);
@@ -515,21 +354,21 @@ namespace KinectV3 {
       float offset = -20 * MathHelper.ToDegrees((float) ((xAngle > 0) ? Math.PI : -Math.PI) - xAngle) / 9;
       spriteBatch.Draw(overlay, rect(34, 0, 1, 480), color(.70196f, 0.67843f, 0.67843f, .1f));
       for (int i = -2; i < 26; i++) {
-        spriteBatch.Draw(overlay, rect(30, (int)(20 * i + offset), 10, 2), color(.70196f, 0.67843f, 0.67843f, .1f));
+        spriteBatch.Draw(overlay, rect(30, (int)(20 * i + offset), 10, 2), color(.70196f, 0.67843f, 0.67843f, .05f));
       }
     }
 
     private void drawHorizontalTick() {
       float offset = -20 * MathHelper.ToDegrees(yAngle) / 9;
-      spriteBatch.Draw(overlay, rect(0, 450, 640, 1), color(.70196f, 0.67843f, 0.67843f, .1f));
+      spriteBatch.Draw(overlay, rect(0, 450, 640, 1), color(.70196f, 0.67843f, 0.67843f, .05f));
       for (int i = -2; i < 34; i++) {
-        spriteBatch.Draw(overlay, rect((int)(20 * i + offset), 444, 2, 10), color(.70196f, 0.67843f, 0.67843f, .1f));
+        spriteBatch.Draw(overlay, rect((int)(20 * i + offset), 444, 2, 10), color(.70196f, 0.67843f, 0.67843f, .05f));
       }
     }
 
     private void drawScore() {
       spriteBatch.Draw(overlay, rect(0, 0, 640, 30), color(0, 0, 0, .3f));
-      string scoreString = "Score: " + score;
+      string scoreString = "Red: " + red + " Blue: " + blue;
       Vector2 size = font.MeasureString(scoreString);
 
       spriteBatch.DrawString(font, scoreString, new Vector2(630 - size.X, (30 - size.Y) / 2), color(1, 1, 1, 1));
@@ -538,12 +377,12 @@ namespace KinectV3 {
     private void drawProgress(float progress, float max) {
       string loading = "Loading";
       Vector2 size = font.MeasureString(loading);
-      spriteBatch.DrawString(font, "Loading", new Vector2(320 - size.X / 2, 200), color(.70196f, 0.67843f, 0.67843f, .1f));
-      spriteBatch.Draw(overlay, rect(118, 223, 404, 2), color(.70196f, 0.67843f, 0.67843f, .1f));
-      spriteBatch.Draw(overlay, rect(118, 255, 404, 2), color(.70196f, 0.67843f, 0.67843f, .1f));
-      spriteBatch.Draw(overlay, rect(118, 225, 2, 30), color(.70196f, 0.67843f, 0.67843f, .1f));
-      spriteBatch.Draw(overlay, rect(520, 225, 2, 30), color(.70196f, 0.67843f, 0.67843f, .1f));
-      spriteBatch.Draw(overlay, rect(120, 225, (int) (400 * (progress / max)), 30), color(.70196f, 0.67843f, 0.67843f, .1f));
+      spriteBatch.DrawString(font, "Loading", new Vector2(320 - size.X / 2, 200), color(.70196f, 0.67843f, 0.67843f, .05f));
+      spriteBatch.Draw(overlay, rect(118, 223, 404, 2), color(.70196f, 0.67843f, 0.67843f, .05f));
+      spriteBatch.Draw(overlay, rect(118, 255, 404, 2), color(.70196f, 0.67843f, 0.67843f, .05f));
+      spriteBatch.Draw(overlay, rect(118, 225, 2, 30), color(.70196f, 0.67843f, 0.67843f, .05f));
+      spriteBatch.Draw(overlay, rect(520, 225, 2, 30), color(.70196f, 0.67843f, 0.67843f, .05f));
+      spriteBatch.Draw(overlay, rect(120, 225, (int)(400 * (progress / max)), 30), color(.70196f, 0.67843f, 0.67843f, .05f));
     }
 
     private Microsoft.Xna.Framework.Rectangle rect(int x, int y, int w, int h) {

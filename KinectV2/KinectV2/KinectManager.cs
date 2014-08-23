@@ -55,6 +55,7 @@ namespace KinectV2 {
 
     // The current camera pose / guess for next frame's pose
     private Matrix4 currentMatrix = Matrix4.Identity;
+    private Matrix4 continueMatrix = Matrix4.Identity;
     private Matrix4 initAlign = Matrix4.Identity;
     private bool hasInitAlign = false;
 
@@ -356,10 +357,11 @@ namespace KinectV2 {
           this.volume.SmoothDepthFloatFrame(frame, smoothDepthFloatFrame, 1, .04f);
           smoothDepthFloatFrame.CopyPixelDataTo(pointCloud);
 
-
           if (continuousTrack && hasInitAlign) {
-            continueVolume.IntegrateFrame(smoothDepthFloatFrame, 7, currentMatrix);
-            Matrix4 t = toMatrix4(Matrix.Multiply(toMatrix(initAlign), toMatrix(continueVolume.GetCurrentWorldToCameraTransform())));
+            continueVolume.IntegrateFrame(smoothDepthFloatFrame, 7, continueMatrix);
+            Console.WriteLine(continueVolume.GetCurrentWorldToCameraTransform());
+            continueMatrix = continueVolume.GetCurrentWorldToCameraTransform();
+            Matrix4 t = toMatrix4(Matrix.Multiply(toMatrix(initAlign), toMatrix(continueMatrix)));
             Monitor.Enter(matrixLock);
             currentMatrix = t;
             Monitor.Exit(matrixLock);

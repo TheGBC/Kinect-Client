@@ -6,19 +6,22 @@ using System.Linq;
 using System.Text;
 
 namespace KinectV3 {
-  class RpcBody {
+  class StaticBody {
     private Model _model;
-    private Vector3 color;
+    private Matrix world;
     private Matrix[] _meshTransforms;
     private string tag;
+    private bool transparent;
 
-    public RpcBody(Model model, Vector3 color, string tag) {
+    public StaticBody(Model model, Matrix world, string tag, bool transparent) {
+      this.world = world;
       _model = model;
-      this.color = color;
+
       _meshTransforms = new Matrix[_model.Bones.Count];
       _model.CopyAbsoluteBoneTransformsTo(_meshTransforms);
 
       this.tag = tag;
+      this.transparent = transparent;
       foreach (var mesh in _model.Meshes) {
         foreach (BasicEffect effect in mesh.Effects) {
           effect.EnableDefaultLighting();
@@ -29,23 +32,20 @@ namespace KinectV3 {
       }
     }
 
-    public string Tag {
-      get {
-        return tag;
-      }
-    }
-
-    public void Draw(Matrix view, Matrix projection, Matrix offset, List<Matrix> transforms) {
-      foreach (Matrix transform in transforms) {
-        foreach (var mesh in _model.Meshes) {
-          foreach (BasicEffect effect in mesh.Effects) {
-            effect.World = _meshTransforms[mesh.ParentBone.Index] * transform * offset;
-            effect.View = view;
-            effect.Projection = projection;
-            effect.DiffuseColor = color;
+    public void Draw(Matrix view, Matrix projection, Matrix offset, bool disp = true) {
+      foreach (var mesh in _model.Meshes) {
+        foreach (BasicEffect effect in mesh.Effects) {
+          effect.World = _meshTransforms[mesh.ParentBone.Index] * world * offset;
+          effect.View = view;
+          effect.Projection = projection;
+          if (this.transparent) {
+            effect.Alpha = .5f;
           }
-          mesh.Draw();
+          if (!disp) {
+            effect.Alpha = 0;
+          }
         }
+        mesh.Draw();
       }
     }
   }
