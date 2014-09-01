@@ -76,7 +76,7 @@ namespace KinectV3 {
     // Empirically gathered offset
     Vector3 offsetPos = new Vector3(0, -.01f, .35f);
 
-
+    bool OBSERVER = false;
     bool FULLSCREEN = false;
     bool ENABLE_KINECT = true;
     bool CONTINUE_TRACK = false;
@@ -176,7 +176,9 @@ namespace KinectV3 {
       cupBottomBody = new StaticBody(cup_bottom, transform(), "cup_bottom", false);
 
       new Thread(new ThreadStart(tcpPhysics)).Start();
-      new Thread(new ThreadStart(tcpPhone)).Start();
+      if (!OBSERVER) {
+        new Thread(new ThreadStart(tcpPhone)).Start();
+      }
     }
 
     private Matrix transform(bool rotate = false) {
@@ -383,7 +385,10 @@ namespace KinectV3 {
       GraphicsDevice.RasterizerState = RasterizerState.CullCounterClockwise;
       GraphicsDevice.BlendState = BlendState.AlphaBlend;
       GraphicsDevice.DepthStencilState = DepthStencilState.Default;
-      GraphicsDevice.SetRenderTarget(renderTarget);
+
+      if (!OBSERVER) {
+        GraphicsDevice.SetRenderTarget(renderTarget);
+      }
       GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
       // Draw the camera feed
       if (ENABLE_KINECT) {
@@ -444,7 +449,10 @@ namespace KinectV3 {
         drawProgress(manager.progress, manager.max);
       }
       spriteBatch.End();
-      GraphicsDevice.SetRenderTarget(null);
+
+      if (!OBSERVER) {
+        GraphicsDevice.SetRenderTarget(null);
+      }
       Monitor.Exit(colorLock);
       base.Draw(gameTime);
     }
