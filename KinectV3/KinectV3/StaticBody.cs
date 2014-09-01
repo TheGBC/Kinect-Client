@@ -18,6 +18,7 @@ namespace KinectV3 {
       _model = model;
 
       _meshTransforms = new Matrix[_model.Bones.Count];
+      Console.WriteLine(_meshTransforms.Length);
       _model.CopyAbsoluteBoneTransformsTo(_meshTransforms);
 
       this.tag = tag;
@@ -29,6 +30,12 @@ namespace KinectV3 {
           effect.SpecularColor = Vector3.One;
           effect.PreferPerPixelLighting = true;
         }
+      }
+    }
+
+    public Matrix MeshTransform {
+      get {
+        return _meshTransforms[0] * world;
       }
     }
 

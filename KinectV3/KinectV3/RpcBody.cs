@@ -39,6 +39,7 @@ namespace KinectV3 {
       foreach (Matrix transform in transforms) {
         foreach (var mesh in _model.Meshes) {
           foreach (BasicEffect effect in mesh.Effects) {
+            Console.WriteLine(_meshTransforms[mesh.ParentBone.Index]);
             effect.World = _meshTransforms[mesh.ParentBone.Index] * transform * offset;
             effect.View = view;
             effect.Projection = projection;

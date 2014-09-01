@@ -13,7 +13,6 @@ using KinectV2;
 using Henge3D.Physics;
 using Henge3D;
 using System.Net.Sockets;
-using System.Drawing;
 using System.Windows.Forms;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -24,10 +23,17 @@ namespace KinectV3 {
   /// This is the main type for your game
   /// </summary>
   public class Game1 : Microsoft.Xna.Framework.Game {
+    Color[] bufferData;
+    byte[] byteData;
+    int counter = 0;
+
+    RenderTarget2D renderTarget;
+
     GraphicsDeviceManager graphics;
     SpriteBatch spriteBatch;
     Texture2D cameraFeed;
     Texture2D overlay;
+    Texture2D fromBytes;
     SpriteFont font;
 
     Quad quad;
@@ -40,6 +46,8 @@ namespace KinectV3 {
     List<Matrix> bodiesTransforms1 = new List<Matrix>();
     RpcBody bodies2;
     List<Matrix> bodiesTransforms2 = new List<Matrix>();
+
+    List<List<Matrix>> transforms = new List<List<Matrix>>();
 
     Matrix offset = Matrix.Identity;
     Matrix projection = Matrix.CreatePerspectiveFieldOfView(MathHelper.ToRadians(48.6f), 62f / 48.6f, .01f, 100f);
@@ -65,10 +73,9 @@ namespace KinectV3 {
     int red = 0;
     int blue = 0;
 
-    TcpClient tcpClient;
-
     // Empirically gathered offset
     Vector3 offsetPos = new Vector3(0, -.01f, .35f);
+
 
     bool FULLSCREEN = false;
     bool ENABLE_KINECT = true;
@@ -98,19 +105,29 @@ namespace KinectV3 {
     private string addBalls = "";
 
     private object writeLock = new object();
+    private object colorLock = new object();
     private object readLock = new object();
 
     private static readonly int BLUE_BALL = 0;
     private static readonly int RED_BALL = 1;
     private int player = BLUE_BALL;
 
+    private string data;
+
+    private Matrix offsetView = Matrix.Identity;
+
     public Game1() {
       graphics = new GraphicsDeviceManager(this);
       graphics.PreferredBackBufferWidth = KinectManager.IMG_WIDTH;
       graphics.PreferredBackBufferHeight = KinectManager.IMG_HEIGHT;
+      bufferData = new Color[KinectManager.IMG_WIDTH * KinectManager.IMG_HEIGHT];
+      byteData = new byte[KinectManager.IMG_WIDTH * KinectManager.IMG_HEIGHT * 3];
       graphics.IsFullScreen = FULLSCREEN;
       Content.RootDirectory = "Content";
       prevState = Keyboard.GetState();
+
+      transforms.Add(new List<Matrix>());
+      transforms.Add(new List<Matrix>());
     }
 
     /// <summary>
@@ -129,9 +146,11 @@ namespace KinectV3 {
     /// all of your content.
     /// </summary>
     protected override void LoadContent() {
+      renderTarget = new RenderTarget2D(GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8);
       cameraFeed = new Texture2D(graphics.GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT);
       overlay = new Texture2D(graphics.GraphicsDevice, 1, 1);
       overlay.SetData<Microsoft.Xna.Framework.Color>(new Microsoft.Xna.Framework.Color[] { new Microsoft.Xna.Framework.Color(1, 1, 1, .1f) });
+      fromBytes = new Texture2D(graphics.GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT);
 
       quad = new Quad(graphics.GraphicsDevice, cameraFeed);
 
@@ -157,6 +176,7 @@ namespace KinectV3 {
       cupBottomBody = new StaticBody(cup_bottom, transform(), "cup_bottom", false);
 
       new Thread(new ThreadStart(tcpPhysics)).Start();
+      new Thread(new ThreadStart(tcpPhone)).Start();
     }
 
     private Matrix transform(bool rotate = false) {
@@ -205,6 +225,28 @@ namespace KinectV3 {
       }
 
       offset = Matrix.CreateTranslation(offsetPos);
+
+      // Get camera pose from kinect manager
+      Matrix temp = manager.Camera;
+
+      // Decompose into its scale, rotation, and translation components
+      Vector3 s = new Vector3();
+      Quaternion r = new Quaternion();
+      Vector3 t = new Vector3();
+      temp.Decompose(out s, out r, out t);
+
+      // Invert the x axis rotation
+      r.X *= -1;
+
+      // Rebuild the transform
+      Matrix transform = Matrix.CreateFromQuaternion(r);
+      transform.M41 = temp.M41;
+      transform.M42 = temp.M42;
+      transform.M43 = temp.M43;
+      //Monitor.Enter(readLock);
+      offsetView = transform;
+      //Monitor.Exit(readLock);
+
       Matrix m = Matrix.Invert(manager.Camera) * Matrix.Invert(offset) * Twp;
       Vector3 scale = new Vector3();
       cameraTranslation = new Vector3();
@@ -224,7 +266,7 @@ namespace KinectV3 {
       }
 
       if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.OemPlus) && prevState.IsKeyUp(Microsoft.Xna.Framework.Input.Keys.OemPlus)) {
-        addBall(cameraTranslation);
+        //addBall(cameraTranslation);
       }
 
       // Update the model and previous state
@@ -240,7 +282,7 @@ namespace KinectV3 {
     }
 
     private void tcpPhysics() {
-      tcpClient = new TcpClient("127.0.0.1", 9000);
+      TcpClient tcpClient = new TcpClient("127.0.0.1", 9000);
       StreamReader reader = new StreamReader(tcpClient.GetStream());
       StreamWriter writer = new StreamWriter(tcpClient.GetStream());
       while (true) {
@@ -249,19 +291,72 @@ namespace KinectV3 {
         writer.Flush();
         addBalls = "";
         Monitor.Exit(writeLock);
-        string data = reader.ReadLine();
-        Monitor.Enter(readLock);
+        data = reader.ReadLine();
+       
         string[] colors = data.Split('*');
-        blue = int.Parse(colors[0]);
-        red = int.Parse(colors[1]);
-        if (!colors[2].Equals("")) {
-          setBalls(colors[2], bodiesTransforms1);
+        int resetBlue = int.Parse(colors[0]);
+        int resetRed = int.Parse(colors[1]);
+
+        if ((player == BLUE_BALL && resetBlue != 0) || (player == RED_BALL && resetRed != 0)) {
+          manager.retry();
         }
-        if (!colors[3].Equals("")) {
-          setBalls(colors[3], bodiesTransforms2);
+
+        blue = int.Parse(colors[2]);
+        red = int.Parse(colors[3]);
+        Monitor.Enter(readLock);
+        if (!colors[4].Equals("")) {
+          setBalls(colors[4], bodiesTransforms1);
+          setBalls(colors[4], transforms[0]);
+        }
+        if (!colors[5].Equals("")) {
+          setBalls(colors[5], bodiesTransforms2);
+          setBalls(colors[5], transforms[1]);
         }
         Monitor.Exit(readLock);
+        Thread.Sleep(100);
       }
+    }
+
+    private void tcpPhone() {
+      while (true) {
+        TcpClient tcpClient = new TcpClient("127.0.0.1", 8000);
+        Stream stream = tcpClient.GetStream();
+        byte[] buffer = new byte[1];
+        stream.Read(buffer, 0, 1);
+        if (buffer[0] != 0) {
+          addBall(cameraTranslation);
+        }
+        Monitor.Enter(colorLock);
+        renderTarget.SaveAsJpeg(stream, 320, 240);
+        Monitor.Exit(colorLock);
+        stream.Close();
+        //stream.Flush();
+        //writer.WriteLine(fromMatrix(cupTopBody.MeshTransform * Tpw * offset) + "*" + fromMatrix(offsetView) + "*" + serializeBallsToString());
+        //writer.Flush();
+      }
+    }
+
+    private string fromMatrix(Matrix m) {
+      return new StringBuilder().Append(m.M11).Append(',').Append(m.M12).Append(',').Append(m.M13).Append(',').Append(m.M14).Append(',')
+        .Append(m.M21).Append(',').Append(m.M22).Append(',').Append(m.M23).Append(',').Append(m.M24).Append(',')
+        .Append(m.M31).Append(',').Append(m.M32).Append(',').Append(m.M33).Append(',').Append(m.M34).Append(',')
+        .Append(m.M41).Append(',').Append(m.M42).Append(',').Append(m.M43).Append(',').Append(m.M44).ToString();
+    }
+
+    private string serializeBallsToString() {
+      StringBuilder builder = new StringBuilder();
+      for (int ind = 0; ind < transforms.Count; ind++) {
+        for (int i = 0; i < transforms[ind].Count; i++) {
+          builder.Append(fromMatrix(transforms[ind][i] * Tpw * offset));
+          if (i < transforms[ind].Count - 1) {
+            builder.Append("|");
+          }
+        }
+        if (ind < transforms.Count - 1) {
+          builder.Append("*");
+        }
+      }
+      return builder.ToString();
     }
 
     private void setBalls(string ballList, List<Matrix> transforms) {
@@ -283,21 +378,23 @@ namespace KinectV3 {
     /// </summary>
     /// <param name="gameTime">Provides a snapshot of timing values.</param>
     protected override void Draw(GameTime gameTime) {
+      Monitor.Enter(colorLock);
+      // Change GraphicsDevice settings to allow for occlusion
+      GraphicsDevice.RasterizerState = RasterizerState.CullCounterClockwise;
+      GraphicsDevice.BlendState = BlendState.AlphaBlend;
+      GraphicsDevice.DepthStencilState = DepthStencilState.Default;
+      GraphicsDevice.SetRenderTarget(renderTarget);
       GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
-
       // Draw the camera feed
       if (ENABLE_KINECT) {
-      graphics.GraphicsDevice.Textures[0] = null;
-      graphics.GraphicsDevice.Textures[1] = null;
+        graphics.GraphicsDevice.Textures[0] = null;
+        graphics.GraphicsDevice.Textures[1] = null;
+        graphics.GraphicsDevice.Textures[2] = null;
         byte[] imageData = manager.ImageData;
         if (imageData != null) {
           texture(KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT, imageData);
         }
 
-        // Change GraphicsDevice settings to allow for occlusion
-        GraphicsDevice.RasterizerState = RasterizerState.CullCounterClockwise;
-        GraphicsDevice.BlendState = BlendState.AlphaBlend;
-        GraphicsDevice.DepthStencilState = DepthStencilState.Default;
 
         // Draw the camera feed
         quad.Draw(projection);
@@ -347,6 +444,8 @@ namespace KinectV3 {
         drawProgress(manager.progress, manager.max);
       }
       spriteBatch.End();
+      GraphicsDevice.SetRenderTarget(null);
+      Monitor.Exit(colorLock);
       base.Draw(gameTime);
     }
 
@@ -367,11 +466,11 @@ namespace KinectV3 {
     }
 
     private void drawScore() {
-      spriteBatch.Draw(overlay, rect(0, 0, 640, 30), color(0, 0, 0, .3f));
+      spriteBatch.Draw(overlay, rect(0, 0, 640, 100), color(0, 0, 0, .3f));
       string scoreString = "Red: " + red + " Blue: " + blue;
       Vector2 size = font.MeasureString(scoreString);
 
-      spriteBatch.DrawString(font, scoreString, new Vector2(630 - size.X, (30 - size.Y) / 2), color(1, 1, 1, 1));
+      spriteBatch.DrawString(font, scoreString, new Vector2((320 - size.X) / 2, (80 - size.Y) / 2), color(1, 1, 1, 1));
     }
 
     private void drawProgress(float progress, float max) {
@@ -394,6 +493,11 @@ namespace KinectV3 {
     }
 
     private void texture(int width, int height, byte[] data) {
+      // Set pixeldata from the ColorImageFrame to a Texture2D
+      cameraFeed.SetData(toColors(width, height, data));
+    }
+
+    private Microsoft.Xna.Framework.Color[] toColors(int width, int height, byte[] data) {
       // Convert the byte data into a color array to set into the texture
       Microsoft.Xna.Framework.Color[] color = new Microsoft.Xna.Framework.Color[width * height];
 
@@ -405,9 +509,7 @@ namespace KinectV3 {
           color[y * width + (width - x - 1)] = new Microsoft.Xna.Framework.Color(data[index + 2], data[index + 1], data[index + 0]);
         }
       }
-      // Set pixeldata from the ColorImageFrame to a Texture2D
-
-      cameraFeed.SetData(color);
+      return color;
     }
   }
 }
