@@ -27,7 +27,9 @@ namespace KinectV3 {
     byte[] byteData;
     int counter = 0;
 
+    RenderTarget2D largerTarget;
     RenderTarget2D renderTarget;
+    JpgWriter writer;
 
     GraphicsDeviceManager graphics;
     SpriteBatch spriteBatch;
@@ -146,7 +148,10 @@ namespace KinectV3 {
     /// all of your content.
     /// </summary>
     protected override void LoadContent() {
-      renderTarget = new RenderTarget2D(GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8);
+      largerTarget = new RenderTarget2D(GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8);
+      renderTarget = new RenderTarget2D(GraphicsDevice, KinectManager.IMG_WIDTH / 2, KinectManager.IMG_HEIGHT / 2, false, SurfaceFormat.Color, DepthFormat.Depth24Stencil8);
+      writer = new JpgWriter(KinectManager.IMG_WIDTH / 2, KinectManager.IMG_HEIGHT / 2);
+
       cameraFeed = new Texture2D(graphics.GraphicsDevice, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT);
       overlay = new Texture2D(graphics.GraphicsDevice, 1, 1);
       overlay.SetData<Microsoft.Xna.Framework.Color>(new Microsoft.Xna.Framework.Color[] { new Microsoft.Xna.Framework.Color(1, 1, 1, .1f) });
@@ -267,8 +272,8 @@ namespace KinectV3 {
         show = !show;
       }
 
-      if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.OemPlus) && prevState.IsKeyUp(Microsoft.Xna.Framework.Input.Keys.OemPlus)) {
-        //addBall(cameraTranslation);
+      if (Keyboard.GetState().IsKeyDown(Microsoft.Xna.Framework.Input.Keys.OemPlus) && prevState.IsKeyUp(Microsoft.Xna.Framework.Input.Keys.OemPlus) && OBSERVER) {
+        addBall(cameraTranslation);
       }
 
       // Update the model and previous state
@@ -322,16 +327,18 @@ namespace KinectV3 {
     private void tcpPhone() {
       while (true) {
         TcpClient tcpClient = new TcpClient("127.0.0.1", 8000);
-        Stream stream = tcpClient.GetStream();
-        byte[] buffer = new byte[1];
-        stream.Read(buffer, 0, 1);
-        if (buffer[0] != 0) {
-          addBall(cameraTranslation);
+        using (Stream stream = tcpClient.GetStream()) {
+          byte[] buffer = new byte[1];
+          stream.Read(buffer, 0, 1);
+          if (buffer[0] != 0) {
+            addBall(cameraTranslation);
+          }
+          Monitor.Enter(colorLock);
+          writer.TextureToJpg(renderTarget, stream);
+          //renderTarget.SaveAsJpeg(stream, 320, 240);
+          Monitor.Exit(colorLock);
+          stream.Close();
         }
-        Monitor.Enter(colorLock);
-        renderTarget.SaveAsJpeg(stream, 320, 240);
-        Monitor.Exit(colorLock);
-        stream.Close();
         //stream.Flush();
         //writer.WriteLine(fromMatrix(cupTopBody.MeshTransform * Tpw * offset) + "*" + fromMatrix(offsetView) + "*" + serializeBallsToString());
         //writer.Flush();
@@ -385,9 +392,8 @@ namespace KinectV3 {
       GraphicsDevice.RasterizerState = RasterizerState.CullCounterClockwise;
       GraphicsDevice.BlendState = BlendState.AlphaBlend;
       GraphicsDevice.DepthStencilState = DepthStencilState.Default;
-
       if (!OBSERVER) {
-        GraphicsDevice.SetRenderTarget(renderTarget);
+        GraphicsDevice.SetRenderTarget(largerTarget);
       }
       GraphicsDevice.Clear(Microsoft.Xna.Framework.Color.Black);
       // Draw the camera feed
@@ -451,6 +457,11 @@ namespace KinectV3 {
       spriteBatch.End();
 
       if (!OBSERVER) {
+        GraphicsDevice.SetRenderTarget(renderTarget);
+        spriteBatch.Begin();
+        spriteBatch.Draw(largerTarget, new Rectangle(0, 0, KinectManager.IMG_WIDTH / 2, KinectManager.IMG_HEIGHT / 2),
+            new Rectangle(0, 0, KinectManager.IMG_WIDTH, KinectManager.IMG_HEIGHT), Color.White);
+        spriteBatch.End();
         GraphicsDevice.SetRenderTarget(null);
       }
       Monitor.Exit(colorLock);
